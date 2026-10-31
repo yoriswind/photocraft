@@ -30,7 +30,7 @@ pub mod tools;
 #[cfg(test)]
 mod tests;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -202,11 +202,18 @@ impl Session {
         let st = &mut self.presets;
         if let Some(g) = p.gradients {
             st.gradients = g;
-            // Older imports could contain duplicate names, which alias panel selections.
-            let mut taken = crate::cmd::preset_import_cmds::UniqueNames::new(std::iter::empty());
+            // Reserve all saved names before naming duplicates; lookup is case-sensitive.
+            let mut taken: HashSet<_> = st.gradients.iter().flat_map(|g| g.items.iter().map(|i| i.name.clone())).collect();
+            let mut seen = HashSet::new();
+            let mut next = HashMap::<String, usize>::new();
             for group in &mut st.gradients {
                 for item in &mut group.items {
-                    item.name = taken.unique(&item.name);
+                    if !seen.insert(item.name.clone()) {
+                        let from = next.get(&item.name).copied().unwrap_or(2);
+                        let i = (from..).find(|i| taken.insert(format!("{} {i}", item.name))).unwrap_or(from);
+                        next.insert(item.name.clone(), i.saturating_add(1));
+                        item.name = format!("{} {i}", item.name);
+                    }
                 }
             }
         }

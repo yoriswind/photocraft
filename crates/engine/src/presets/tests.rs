@@ -48,6 +48,51 @@ fn style_preset_new_from_an_explicit_effect_list() {
 
 // ------------------------------------------------------------------ gradients
 
+/// Restore a saved library with distinct colors and the last preset current.
+fn restored_gradients(names: &[&str]) -> Session {
+    use super::{
+        Group,
+        gradients::{GradientPreset, StopColor},
+    };
+    let items: Vec<_> = names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| GradientPreset {
+            name: (*name).into(),
+            stops: vec![(0.0, StopColor::Rgb([i as f32 / 4.0; 3])), (1.0, StopColor::Rgb([1.0; 3]))],
+            opacity: Vec::new(),
+        })
+        .collect();
+    let mut original = Session::new();
+    original.presets.gradient = items.last().unwrap().clone();
+    original.presets.gradients = vec![Group::new("Saved", items)];
+    let mut restored = Session::new();
+    restored.load_presets_json(original.presets.to_json(&original));
+    restored
+}
+
+/// Numbering a duplicate must not steal the name of another saved gradient.
+#[test]
+fn restored_gradient_names_preserve_existing_suffixes() {
+    let mut s = restored_gradients(&["Foo", "Foo", "Foo 2"]);
+    let current = s.presets.gradient.clone();
+    s.execute("gradient.presets.select", json!({"preset": "Foo 2"})).unwrap();
+    assert_eq!(s.presets.gradient, current, "Foo 2 must still address its original colors");
+    let names: Vec<_> = s.presets.gradients[0].items.iter().map(|g| g.name.as_str()).collect();
+    assert_eq!(names, ["Foo", "Foo 3", "Foo 2"]);
+}
+
+/// Saved names differing only by case are already independently addressable.
+#[test]
+fn restored_gradient_names_preserve_case() {
+    let mut s = restored_gradients(&["Foo", "FOO"]);
+    let current = s.presets.gradient.clone();
+    s.execute("gradient.presets.select", json!({"preset": "FOO"})).unwrap();
+    assert_eq!(s.presets.gradient, current);
+    let names: Vec<_> = s.presets.gradients[0].items.iter().map(|g| g.name.as_str()).collect();
+    assert_eq!(names, ["Foo", "FOO"]);
+}
+
 #[test]
 fn gradient_builtins_and_listing() {
     let mut s = Session::new();
