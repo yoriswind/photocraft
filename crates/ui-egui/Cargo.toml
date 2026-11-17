@@ -60,8 +60,6 @@ sys-locale = "=0.3.2"
 winsafe = { version = "=0.0.29", default-features = false, features = ["kernel", "dxgi", "advapi"] }
 
 [dev-dependencies]
-# Preferences tests serialize saved settings as TOML.
-toml = { version = "1.1", default-features = false, features = ["display"] }
 photocraft-io = { workspace = true, features = ["testgen"] }
 # egui's own default fonts in tests, so contexts made with `Context::default()` (no
 # install_fonts) can lay out text.
