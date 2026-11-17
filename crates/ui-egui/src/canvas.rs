@@ -237,6 +237,9 @@ mod pattern_drag_tests;
 mod tabs_tests;
 
 #[cfg(test)]
+mod zoom_all_windows_tests;
+
+#[cfg(test)]
 mod doc_window_dialog_tests;
 
 #[cfg(test)]

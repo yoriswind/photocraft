@@ -23,7 +23,7 @@ use craft::draw::ui::{CropShown, CropToolPass};
 use craft::keymap::Mods;
 use craft::ui::canvas::{
     Autoscroll, CanvasTool, HandTool, Momentary, NavigationOptions, NoTool, RotateViewTool, StandInKey, ToolAccess, ToolAction, ToolClaims, ToolContext,
-    ToolHost, ToolHostResponse, ToolKey, ToolPass, ToolPath, ToolPointer, ToolRegion, ZoomTool,
+    ToolHost, ToolHostResponse, ToolKey, ToolPass, ToolPath, ToolPointer, ToolRegion, ViewCommands, ViewZoomStep, ZoomTool,
 };
 use craft::ui::primitives::Draw;
 
@@ -499,6 +499,7 @@ fn with_rig<R>(
 ) -> R {
     let tool = app.ui.tool;
     let fam = family(tool);
+    let temporary_zoom = crate::spring_tools::holds(app, Tool::Zoom);
     // Tools that own state the app lends nobody are built before the scope takes the app.
     let crop_run = (fam == Family::Crop).then(|| crate::crop_ui::CropRun::of(app)).flatten();
     let mut crop_tool = crop_run.as_ref().map(|_| std::mem::take(&mut tools.crop.tool));
@@ -637,7 +638,7 @@ fn with_rig<R>(
         }
         let alt_stand_in = alt_t.is_some();
         let mut pre = Preflight { scope: &scope, inner: selected, tool, dialog: dialog_picked, outline_open, alt_stand_in };
-        let mut tool_host = ToolHost::new().momentary(momentary);
+        let mut tool_host = ToolHost::new().momentary(momentary).temporary_tool(temporary_zoom);
         if let Some(mover) = command_t.as_mut() {
             tool_host = tool_host.stand_in(StandInKey::Command, dynamic(mover));
         }
@@ -715,12 +716,63 @@ pub(crate) fn run(app: &mut PhotocraftApp, ui: &egui::Ui, host: CanvasHost, out:
         _ => {}
     }
     after_run(app, &mut tools, &response);
+    // A minimum zoom may round through PhotoCraft's f32 camera without changing it, even when the shared f64
+    // ladder reached a distinct value. Match View::set_from's device-zoom conversion; leave the source response
+    // intact and suppress only the peer follow when the zoom PhotoCraft stores cannot change.
+    let zoom_changed = response.view.as_ref().is_some_and(|next| {
+        app.ui.views.get(host.idx).is_some_and(|view| (next.zoom * f64::from(ctx.pixels_per_point())) as f32 != view.zoom)
+    });
+    if zoom_changed && let Some(step) = response.zoom_step.as_ref() {
+        zoom_all_windows(app, &ctx, host, step);
+    }
     #[cfg(test)]
     if primary {
         tools.last_response = Some(response.clone());
     }
     app.canvas_tools = tools;
     response
+}
+
+/// Follow a real selected Zoom click, reported by the shared host, in the other shown docked views.
+/// The source view remains the response's view and is written back by its existing canvas pass.
+fn zoom_all_windows(app: &mut PhotocraftApp, ctx: &egui::Context, source: CanvasHost, step: &ViewZoomStep) {
+    if !app.ui.tool_options.zoom_all_windows
+        || app.ui.tool != Tool::Zoom
+        || source.window.is_some()
+        || app.ui.view.screen_mode != craft::ui::shell::ScreenMode::Standard
+    {
+        return;
+    }
+    let mut shown: Vec<usize> = match super::document_area::arranged_cells(app, app.last_canvas_rect) {
+        Some(cells) => cells.into_iter().map(|(idx, _)| idx).collect(),
+        None => super::tabs::main_canvas_document(app).into_iter().collect(),
+    };
+    shown.sort_unstable();
+    shown.dedup();
+    let ppp = ctx.pixels_per_point();
+    let animated = app.session.prefs().general.animated_zoom;
+    for idx in shown {
+        if idx == source.idx {
+            continue;
+        }
+        let Some(mut stored) = app.ui.views.get(idx).cloned() else { continue };
+        let Some(space) = ToolHost::shown_space(ctx, CanvasHost::main(idx).canvas_id()) else { continue };
+        let mut next = stored.canvas_view(space.view.rect, ppp, app.ui.view.flip_horizontal, app.ui.view.display_aspect());
+        let zoom = stored.zoom;
+        let target = document_display::view_target(app, idx);
+        let command = if step.out { ViewCommands::ZoomOut } else { ViewCommands::ZoomIn };
+        let _ = command.apply(&mut next, &target, None, ppp);
+        // A rounding-only result must keep this peer's queued commands and pending animation intact.
+        if (next.zoom * f64::from(ppp)) as f32 == zoom {
+            continue;
+        }
+        stored.request_zoom_animation(animated);
+        stored.set_from(&next, ppp);
+        if let Some(view) = app.ui.views.get_mut(idx) {
+            *view = stored;
+        }
+        ctx.request_repaint();
+    }
 }
 
 /// The regions the tool of the canvas `host`'s next pass claims over the canvas controls (`CanvasTool::regions`), for
