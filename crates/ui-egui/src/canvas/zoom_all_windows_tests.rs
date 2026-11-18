@@ -209,10 +209,7 @@ fn the_real_checkbox_is_default_off_and_persists_without_history() {
 }
 
 fn key(h: &mut Harness<'_, PhotocraftApp>, key: Key, pressed: bool, modifiers: Modifiers) {
-    h.input_mut().events.extend([
-        Event::ModifiersChanged(modifiers),
-        Event::Key { key, physical_key: None, pressed, repeat: false, modifiers },
-    ]);
+    h.input_mut().events.extend([Event::ModifiersChanged(modifiers), Event::Key { key, physical_key: None, pressed, repeat: false, modifiers }]);
     h.run_steps(2);
 }
 
@@ -310,7 +307,9 @@ fn view_buttons_and_zoom_commands_stay_source_only() {
 fn a_source_click_at_its_limit_does_not_step_peers() {
     let mut h = harness();
     h.state_mut().ui.tool_options.zoom_all_windows = true;
-    for (zoom, modifiers) in [(ZoomLadder::MAX as f32, Modifiers::NONE), (ZoomLadder::min(craft::behavior::kurbo::Size::new(2000.0, 1500.0)) as f32, Modifiers::ALT)] {
+    for (zoom, modifiers) in
+        [(ZoomLadder::MAX as f32, Modifiers::NONE), (ZoomLadder::min(craft::behavior::kurbo::Size::new(2000.0, 1500.0)) as f32, Modifiers::ALT)]
+    {
         reset_views(&mut h, 0);
         h.state_mut().ui.views[0].zoom = zoom;
         h.run_steps(2);

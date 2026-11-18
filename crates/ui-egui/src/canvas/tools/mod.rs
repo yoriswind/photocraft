@@ -719,9 +719,10 @@ pub(crate) fn run(app: &mut PhotocraftApp, ui: &egui::Ui, host: CanvasHost, out:
     // A minimum zoom may round through PhotoCraft's f32 camera without changing it, even when the shared f64
     // ladder reached a distinct value. Match View::set_from's device-zoom conversion; leave the source response
     // intact and suppress only the peer follow when the zoom PhotoCraft stores cannot change.
-    let zoom_changed = response.view.as_ref().is_some_and(|next| {
-        app.ui.views.get(host.idx).is_some_and(|view| (next.zoom * f64::from(ctx.pixels_per_point())) as f32 != view.zoom)
-    });
+    let zoom_changed = response
+        .view
+        .as_ref()
+        .is_some_and(|next| app.ui.views.get(host.idx).is_some_and(|view| (next.zoom * f64::from(ctx.pixels_per_point())) as f32 != view.zoom));
     if zoom_changed && let Some(step) = response.zoom_step.as_ref() {
         zoom_all_windows(app, &ctx, host, step);
     }
