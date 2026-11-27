@@ -206,3 +206,39 @@ fn a_held_corner_widget_is_no_snap_target_without_the_box() {
     testing::release(&mut app, [64.0, 64.0], NONE);
     assert!(super::pressed_layers(&app).is_empty(), "nothing is held after the release");
 }
+
+/// The unmeasured Polygon widget keeps its canvas label; the already measured Triangle keeps its own.
+#[test]
+fn polygon_corner_widgets_keep_edit_shape_and_triangle_widgets_keep_their_name() {
+    for (kind, name) in [("polygon", "Edit Shape"), ("triangle", "Change Rounded Triangle")] {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.session.execute("file.new", json!({"width": 300, "height": 260})).unwrap();
+        app.sync_views();
+        app.run("shape.create", json!({"kind": kind, "rect": [40, 40, 160, 160], "sides": 5, "cornerRadius": 20})).unwrap();
+        let id = active(&app);
+        app.ui.tool = Tool::PathSelection;
+        app.run("view.actualPixels", json!({})).unwrap();
+        testing::frame(&mut app);
+        let targets = corner_targets(&app);
+        assert_eq!(targets.len(), 1);
+        let corner = &targets[0].corners[0];
+        // The actual widget lies at the fillet centre; radius20 is beyond its minimum inset.
+        let step = craft::draw::geometry::fillet::fillet(corner.prev, corner.vertex, corner.next, 1.0).unwrap().step();
+        let from = corner.vertex + step * corner.radius;
+        let to = corner.vertex + step * (corner.radius + 3.0);
+        let n = steps(&app);
+        drag(&mut app, [from.x, from.y], [to.x, to.y]);
+        assert_eq!(steps(&app), n + 1, "{kind}");
+        assert_eq!(app.session.active().unwrap().history.undo_label(), Some(name), "{kind}");
+        let radius = |app: &PhotocraftApp| match live_of(app, id) {
+            LiveShape::Polygon { corner_radius, .. } | LiveShape::Triangle { corner_radius, .. } => corner_radius,
+            other => panic!("a rounded live shape, not {other:?}"),
+        };
+        assert!((radius(&app) - 23.0).abs() < 1e-4, "{kind}");
+        assert!(app.session.undo());
+        assert!((radius(&app) - 20.0).abs() < 1e-4, "{kind}");
+        assert!(app.session.redo());
+        assert!((radius(&app) - 23.0).abs() < 1e-4, "{kind}");
+        assert_eq!(app.session.active().unwrap().history.undo_label(), Some(name), "{kind}");
+    }
+}
