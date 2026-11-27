@@ -114,6 +114,10 @@ fn resaving_an_opened_jpeg_starts_at_its_own_quality() {
     let ctx = h.ctx.clone();
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
     h.run_steps(3);
+    // Save a Copy now confirms its content/profile choices before the format options.
+    let copy_options = h.state().framework.dialogs.stack().top().unwrap();
+    crate::dialogs::testing::confirm(h.state_mut(), copy_options).unwrap();
+    h.run_steps(3);
     assert_eq!((shown(&h).0, parked(&h).map(|p| p.1)), (11, Some(true)));
     h.key_press(Key::Enter);
     h.run_steps(3);
@@ -133,7 +137,7 @@ fn resaving_an_opened_jpeg_starts_at_its_own_quality() {
         steps(&h),
         &vec![
             ActionStep::new("file.saveAs", json!({"path": "p.jpg", "jpegFormat": "baseline"})),
-            ActionStep::new("file.saveACopy", json!({"path": "copy.jpg", "jpegFormat": "baseline"})),
+            ActionStep::new("file.saveACopy", json!({"layers": false, "alphaChannels": false, "spotColors": false, "embedProfile": true, "path": "copy.jpg", "jpegFormat": "baseline"})),
             ActionStep::new("file.saveAs", json!({"path": "q.jpg", "quality": 12, "jpegFormat": "baseline"})),
         ]
     );
@@ -216,6 +220,10 @@ fn save_a_copy_to_a_jpeg_asks_and_keeps_the_document_unsaved() {
     let ctx = h.ctx.clone();
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
     h.run_steps(3);
+    // Save a Copy now confirms its content/profile choices before the format options.
+    let copy_options = h.state().framework.dialogs.stack().top().unwrap();
+    crate::dialogs::testing::confirm(h.state_mut(), copy_options).unwrap();
+    h.run_steps(3);
     assert_eq!(parked(&h).map(|p| p.1), Some(true));
     assert!(jpeg_options_ui::park(h.state_mut(), "other.jpg".into(), false, "file.saveAs").is_err(), "the waiting prompt is kept");
     h.key_press(Key::Enter);
@@ -241,6 +249,10 @@ fn recorded_jpeg_saves_keep_their_options_and_replay_without_asking() {
     h.run_steps(3);
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
     h.run_steps(3);
+    // Save a Copy now confirms its content/profile choices before the format options.
+    let copy_options = h.state().framework.dialogs.stack().top().unwrap();
+    crate::dialogs::testing::confirm(h.state_mut(), copy_options).unwrap();
+    h.run_steps(3);
     set_field(&mut h, "quality", json!(6));
     h.key_press(Key::Enter);
     h.run_steps(3);
@@ -250,7 +262,7 @@ fn recorded_jpeg_saves_keep_their_options_and_replay_without_asking() {
         &vec![
             ActionStep::new("file.saveAs", json!({"path": "p.jpg", "quality": 10, "jpegFormat": "optimized"})),
             // The Save a Copy prompt starts at the format just chosen (it is remembered).
-            ActionStep::new("file.saveACopy", json!({"path": "copy.jpg", "quality": 6, "jpegFormat": "optimized"})),
+            ActionStep::new("file.saveACopy", json!({"layers": false, "alphaChannels": false, "spotColors": false, "embedProfile": true, "path": "copy.jpg", "quality": 6, "jpegFormat": "optimized"})),
         ]
     );
     let expected = [("p.jpg".to_string(), asked(pct(10), JpegFormat::Optimized)), ("copy.jpg".to_string(), asked(pct(6), JpegFormat::Optimized))];
@@ -288,6 +300,10 @@ fn the_next_dialog_starts_at_the_last_answer() {
     h.run_steps(3);
     assert_eq!(saved_value::<Remembered>(&ctx, &REMEMBER_KEY), Remembered { quality: Some(6), jpeg_format: Some("progressive".into()) });
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
+    h.run_steps(3);
+    // Save a Copy now confirms its content/profile choices before the format options.
+    let copy_options = h.state().framework.dialogs.stack().top().unwrap();
+    crate::dialogs::testing::confirm(h.state_mut(), copy_options).unwrap();
     h.run_steps(3);
     assert_eq!(shown(&h), (6, "progressive".to_string()));
     h.key_press(Key::Enter);

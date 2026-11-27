@@ -1,5 +1,5 @@
 use super::paths::{same_file, write_file};
-use super::{Document, EngineError, Layer, LayerContent, Result, Session, Value, f64_param, flattened_checked, json, str_param};
+use super::{Document, EngineError, Layer, LayerContent, Result, Session, Value, f64_param, json, str_param};
 
 /// Whether saving `doc` as a TIFF writes Photoshop layer data (anything beyond a lone
 /// Background layer). The UI asks before such a save when the "ask before saving layered TIFF"
@@ -317,8 +317,79 @@ pub(crate) fn save_doc_as(doc: &Document, path: &str, format: &str, save: impl I
     Ok(warnings)
 }
 
+/// The four copy-only choices. An absent content choice preserves the old format behavior;
+/// an absent profile choice uses the Save a Copy format default. Explicit choices survive replay.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CopyOptions {
+    pub layers: Option<bool>,
+    pub alpha_channels: Option<bool>,
+    pub spot_colors: Option<bool>,
+    pub embed_profile: Option<bool>,
+}
+
+impl CopyOptions {
+    /// Reads copy flags without accepting strings, numbers or null as booleans.
+    pub fn from_params(p: &Value, cmd: &str) -> Result<Self> {
+        let flag = |key: &str| match p.get(key) {
+            None => Ok(None),
+            Some(Value::Bool(value)) => Ok(Some(*value)),
+            Some(_) => Err(EngineError::BadParams { cmd: cmd.into(), msg: format!("`{key}` must be a boolean") }),
+        };
+        Ok(Self {
+            layers: flag("layers")?,
+            alpha_channels: flag("alphaChannels")?,
+            spot_colors: flag("spotColors")?,
+            embed_profile: flag("embedProfile")?,
+        })
+    }
+
+    /// The measured profile default. Unmeasured formats retain the existing embed setting.
+    pub fn profile_default(path: &str) -> bool {
+        let ext = super::extension(path).unwrap_or_default().to_ascii_lowercase();
+        !matches!(ext.as_str(), "png" | "bmp" | "dcm" | "dicom" | "gif" | "iff" | "jp2" | "j2k" | "pcx" | "raw" | "pxr" | "pbm" | "pgm" | "ppm" | "sct" | "tga" | "icb" | "vda" | "vst")
+    }
+
+    /// Applies the content choices to a clone, never to the open document or its History.
+    /// Keep its profile as rendering context; the encoder's embed flag controls the file tag.
+    pub fn prepare(self, original: &Document) -> Result<Document> {
+        let mut doc = original.clone();
+        if self.layers == Some(false) {
+            super::check_flattenable(original, "file.saveACopy")?;
+            // The structural, white-backed Background is measured for RGB/8 only. Other modes
+            // keep the pre-existing headless flatten behavior, just as their unmeasured UI does.
+            let measured = original.mode == photocraft_color::ColorMode::Rgb && original.depth == photocraft_color::SampleType::U8;
+            let pixels = photocraft_compose::flatten_to_surface(original, original.pixel_format(), measured.then_some([1.0, 1.0, 1.0]));
+            let mut background = Layer::new("Background", LayerContent::Raster(pixels));
+            background.locks.transparency = measured;
+            background.locks.position = measured;
+            doc.layers = vec![background].into();
+        }
+        doc.channels.retain(|channel| if channel.spot.is_some() { self.spot_colors != Some(false) } else { self.alpha_channels != Some(false) });
+        Ok(doc)
+    }
+
+    /// Keeps explicit options on the recorded copy, without changing old path-only steps.
+    pub fn record(self, step: &mut Value) {
+        for (name, value) in [("layers", self.layers), ("alphaChannels", self.alpha_channels), ("spotColors", self.spot_colors), ("embedProfile", self.embed_profile)] {
+            if let Some(value) = value {
+                step[name] = json!(value);
+            }
+        }
+    }
+
+    /// Applies only copy policy; Save As and Export As keep their existing settings.
+    pub fn apply(self, path: &str, mut save: SaveOpts) -> SaveOpts {
+        save.embed_icc = Some(self.embed_profile.unwrap_or_else(|| Self::profile_default(path)));
+        if let Some(layers) = self.layers {
+            save.tiff_layers = layers;
+        }
+        save
+    }
+}
+
 pub(super) fn save_a_copy(s: &mut Session, p: &Value) -> Result<Value> {
     let path = str_param(p, "path", "file.saveACopy")?.to_string();
+    let options = CopyOptions::from_params(p, "file.saveACopy")?;
     let d = s.active().ok_or(EngineError::NoDocument)?;
     // A copy over the document's own file replaces it, and a flat or lossy format can't be
     // undone, so it takes an explicit `overwrite` (#7437). The desktop dialog writes through the
@@ -329,13 +400,8 @@ pub(super) fn save_a_copy(s: &mut Session, p: &Value) -> Result<Value> {
             msg: "`path` is the document's own file, so the copy would replace it: choose another path, or pass \"overwrite\": true".into(),
         });
     }
-    let mut doc = (*d.doc).clone();
-    if p.get("layers").and_then(Value::as_bool) == Some(false) {
-        // "Layers" unchecked in Save a Copy: write the flattened image.
-        let fmt = doc.pixel_format();
-        let px = flattened_checked(&doc, fmt, "file.saveACopy")?;
-        doc.layers = vec![Layer::new("Background", LayerContent::Raster(px))].into();
-    }
-    let warnings = save_doc(&doc, &path, SaveOpts::from_params(s, p, "file.saveACopy")?)?;
+    let doc = options.prepare(&d.doc)?;
+    let save = options.apply(&path, SaveOpts::from_params(s, p, "file.saveACopy")?);
+    let warnings = save_doc(&doc, &path, save)?;
     Ok(json!({"path": path, "warnings": warnings}))
 }

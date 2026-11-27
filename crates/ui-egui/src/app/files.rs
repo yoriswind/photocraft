@@ -514,7 +514,8 @@ impl PhotocraftApp {
             let path = params.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()).ok_or("Save a Copy needs a `path`")?;
             // A copy: the document keeps its own file and unsaved state, as when recorded (#4373).
             let doc = self.session.active().ok_or("no document")?.doc.clone();
-            return crate::view_cmds::write_copy(self, &doc, path, choices);
+            let options = photocraft_engine::file_cmds::CopyOptions::from_params(params, id).map_err(|e| e.to_string())?;
+            return crate::view_cmds::write_copy(self, &doc, path, choices, options);
         }
         let path = self.recorded_save_path(params)?;
         self.save_as_step(path, params.get("tiffLayers").and_then(Value::as_bool), choices)
@@ -758,7 +759,7 @@ impl PhotocraftApp {
 
     /// TIFF, Targa, DDS or JPEG Options is waiting on an answer before a save is written.
     pub(crate) fn save_options_open(&self) -> bool {
-        self.parked_save.is_some()
+        self.parked_save.is_some() || self.pending_copy.is_some()
     }
 
     /// Writes a save that waited on a format prompt (Targa, DDS, JPEG or TIFF Options) once answered:
@@ -766,13 +767,22 @@ impl PhotocraftApp {
     /// Copy, `file.save` for a plain Save), so an action being recorded keeps it with this answer
     /// (#2032, #4373), reports a failure in the status bar, and releases a close prompt waiting on
     /// the save.
-    pub(crate) fn write_answered_save(&mut self, ctx: &egui::Context, doc: DocId, path: String, settings: &ExportSettings, copy: bool, step: (&str, Value)) {
+    pub(crate) fn write_answered_save(&mut self, ctx: &egui::Context, target: (DocId, String), settings: &ExportSettings, copy: bool, source: Option<crate::save_copy_options_ui::CapturedCopy>, step: (&str, Value)) {
+        let (doc, path) = target;
         let (record, mut step) = step;
         let written = self.with_document(doc, |app| {
             // Before the save renames the document: a Save As that keeps its own name records
             // only the folder (#5305).
-            app.record_answered_save_as(record, &mut step);
-            app.write_document(path, settings, copy)
+            if let Some(source) = source {
+                source.options.record(&mut step);
+                let mut settings = settings.clone();
+                settings.embed_icc = source.options.embed_profile.unwrap_or_else(|| photocraft_engine::file_cmds::CopyOptions::profile_default(&path));
+                if let Some(layers) = source.options.layers { settings.tiff_layers = layers; }
+                crate::view_cmds::write_copy_settings(app, &source.doc, &path, &settings).map(|_| Some((path, Vec::new())))
+            } else {
+                app.record_answered_save_as(record, &mut step);
+                app.write_document(path, settings, copy)
+            }
         });
         if written.is_ok() {
             photocraft_engine::actions_cmds::note_automation_step(&mut self.session, record, &step);

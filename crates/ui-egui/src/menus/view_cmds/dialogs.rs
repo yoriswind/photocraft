@@ -958,52 +958,38 @@ pub(super) fn suggested_copy_name(doc_name: &str, has_file: bool, copy_suffix: &
 /// and saved state are untouched. An action being recorded keeps it as a `file.saveACopy` step
 /// with its path (#4373).
 fn save_a_copy(app: &mut PhotocraftApp) -> Result<Value, String> {
+    if app.save_options_open() { return Err(crate::SAVE_OPTIONS_OPEN.into()); }
     let doc = app.session.active().ok_or("no document")?.doc.clone();
     let has_file = app.session.active().is_some_and(|d| d.path.is_some());
     let suggested = suggested_copy_name(&doc.name, has_file, app.session.prefs().file_handling.copy_suffix());
     // The copy is of the document as it was when asked.
     app.pick_save_copy(&suggested, doc.mode, doc.depth, move |app, path| {
-        // An RGB Targa asks for its bits per pixel first, a DDS texture for its compression, a
-        // JPEG for its JPEG Options and a TIFF for its TIFF Options; the copy is written from the
-        // prompt.
-        let parked = app.with_document(doc.id, |app| {
-            if crate::targa_options_ui::wants_prompt(app, &path) {
-                crate::targa_options_ui::park(app, path.clone(), true, "file.saveACopy")?;
-                return Ok(true);
-            }
-            if crate::dds_options_ui::wants_prompt(&path) {
-                crate::dds_options_ui::park(app, path.clone(), true, "file.saveACopy")?;
-                return Ok(true);
-            }
-            if crate::jpeg_options_ui::wants_prompt(app, &path) {
-                crate::jpeg_options_ui::park(app, path.clone(), true, "file.saveACopy")?;
-                return Ok(true);
-            }
-            if crate::tiff_options_ui::wants_prompt(app, &path) {
-                crate::tiff_options_ui::park(app, path.clone(), true, "file.saveACopy")?;
-                return Ok(true);
-            }
-            Ok(false)
-        })?;
-        if parked {
-            return Ok(json!({"path": path, "warnings": []}));
-        }
-        let r = write_copy(app, &doc, &path, crate::FormatChoices::default())?;
-        let step = json!({"path": path});
-        photocraft_engine::actions_cmds::note_automation_step(&mut app.session, "file.saveACopy", &step);
-        app.session.journal.push(("file.saveACopy".into(), step));
-        Ok(r)
+        crate::save_copy_options_ui::open(app, doc, path)
     })
 }
 
 /// Writes `doc` to `path` as a copy (Save a Copy, and its replayed action step): the document's
 /// path and saved state are untouched. `choices` are the Targa, DDS and JPEG answers, when there
 /// are any.
-pub(crate) fn write_copy(app: &mut PhotocraftApp, doc: &photocraft_doc::Document, path: &str, choices: crate::FormatChoices) -> Result<Value, String> {
-    let settings = choices.apply(app.save_settings());
+pub(crate) fn write_copy(
+    app: &mut PhotocraftApp,
+    doc: &photocraft_doc::Document,
+    path: &str,
+    choices: crate::FormatChoices,
+    options: photocraft_engine::file_cmds::CopyOptions,
+) -> Result<Value, String> {
+    let doc = options.prepare(doc).map_err(|e| e.to_string())?;
+    let mut settings = choices.apply(app.save_settings());
+    settings.embed_icc = options.embed_profile.unwrap_or_else(|| photocraft_engine::file_cmds::CopyOptions::profile_default(path));
+    if let Some(layers) = options.layers { settings.tiff_layers = layers; }
+    write_copy_settings(app, &doc, path, &settings)
+}
+
+/// The final encoder/writer path, also used by an answered format prompt's immutable prepared copy.
+pub(crate) fn write_copy_settings(app: &mut PhotocraftApp, doc: &photocraft_doc::Document, path: &str, settings: &crate::ExportSettings) -> Result<Value, String> {
     crate::app::ensure_memory_to_save(doc, path)?;
     let export = app.services.export.as_ref().ok_or("no exporter configured")?;
-    let (bytes, warnings) = export(doc, path, &settings)?;
+    let (bytes, warnings) = export(doc, path, settings)?;
     let write = app.services.write.as_mut().ok_or("no writer configured")?;
     write(path, &bytes)?;
     app.detach_others_from_file(path, doc.id);

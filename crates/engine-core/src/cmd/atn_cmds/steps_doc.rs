@@ -80,7 +80,24 @@ pub(super) fn save_from(d: &Descriptor) -> Mapped {
     if !exts.contains(&ext.as_str()) {
         return unsupported;
     }
-    step(if get_bool(d, "Cpy ") == Some(true) { "file.saveACopy" } else { "file.saveAs" }, json!({"path": path}))
+    if get_bool(d, "Cpy ") != Some(true) {
+        return step("file.saveAs", json!({"path": path}));
+    }
+    let mut params = json!({"path": path});
+    for (wire, name) in [("layers", "layers"), ("alphaChannels", "alphaChannels"), ("spot", "spotColors"), ("embedProfiles", "embedProfile")] {
+        let value = if wire == "spot" { d.get(wire).or_else(|| d.get("spotColor")) } else { d.get(wire) };
+        if let Some(value) = value {
+            let D::Boolean(value) = value else { return unsupported };
+            params[name] = json!(value);
+        }
+    }
+    // Two conflicting aliases cannot be replayed faithfully: keep the native event instead.
+    if let (Some(spot), Some(alias)) = (d.get("spot"), d.get("spotColor")) {
+        if spot != alias {
+            return unsupported;
+        }
+    }
+    step("file.saveACopy", params)
 }
 
 pub(super) fn save_to(id: &str, p: &Value) -> Option<Descriptor> {
@@ -99,7 +116,16 @@ pub(super) fn save_to(id: &str, p: &Value) -> Option<Descriptor> {
     let ext = path_extension(path)?;
     let (class, _) = SAVE_FORMATS.iter().find(|(_, exts)| exts.contains(&ext.as_str()))?;
     let d = desc("null").with("As  ", D::Descriptor(desc(class))).with("In  ", path_value(path));
-    Some(if id == "file.saveACopy" { d.with("Cpy ", D::Boolean(true)) } else { d })
+    if id != "file.saveACopy" {
+        return Some(d);
+    }
+    let mut d = d.with("Cpy ", D::Boolean(true));
+    for (name, wire) in [("layers", "layers"), ("alphaChannels", "alphaChannels"), ("spotColors", "spot"), ("embedProfile", "embedProfiles")] {
+        if let Some(value) = p.get(name) {
+            d = d.with(wire, D::Boolean(value.as_bool()?));
+        }
+    }
+    Some(d)
 }
 
 /// Photoshop's four-character condition codes that differ from the string ids.

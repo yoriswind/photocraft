@@ -74,6 +74,7 @@ pub(crate) mod params {
             document: Some(smart_filter_dialog::document),
             ..ParamFamily::new(smart_filter_dialog::owns, smart_filter_dialog::run)
         },
+        super::save_copy_options_ui::FAMILY,
         ParamFamily::new(new_layer_ui::owns, new_layer_ui::run),
         ParamFamily::new(new_group_ui::owns, new_group_ui::run),
         ParamFamily { check: Some(count_group_name_ui::check), ..ParamFamily::new(count_group_name_ui::owns, count_group_name_ui::run) },
@@ -751,6 +752,7 @@ pub(super) mod filter_preview_ui;
 #[cfg(not(target_arch = "wasm32"))]
 pub(super) mod filter_preview_worker;
 pub(crate) mod format_prompts;
+pub(crate) mod save_copy_options_ui;
 pub mod gallery_ui;
 pub(crate) mod guide_edit;
 pub mod guide_layout_ui;

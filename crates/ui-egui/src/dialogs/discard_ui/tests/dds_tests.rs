@@ -101,6 +101,10 @@ fn recorded_dds_saves_keep_their_options_and_replay_without_asking() {
     h.run_steps(3);
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
     h.run_steps(3);
+    // Save a Copy now confirms its content/profile choices before the format options.
+    let copy_options = h.state().framework.dialogs.stack().top().unwrap();
+    crate::dialogs::testing::confirm(h.state_mut(), copy_options).unwrap();
+    h.run_steps(3);
     set_field(&mut h, "mipmaps", json!(true));
     h.key_press(Key::Enter);
     h.run_steps(3);
@@ -116,7 +120,7 @@ fn recorded_dds_saves_keep_their_options_and_replay_without_asking() {
         steps(&h),
         &vec![
             ActionStep::new("file.saveAs", json!({"path": "t.dds", "ddsCompression": "bc1", "ddsMipmaps": false})),
-            ActionStep::new("file.saveACopy", json!({"path": "copy.dds", "ddsCompression": "none", "ddsMipmaps": true})),
+            ActionStep::new("file.saveACopy", json!({"layers": false, "alphaChannels": false, "spotColors": false, "embedProfile": true, "path": "copy.dds", "ddsCompression": "none", "ddsMipmaps": true})),
             ActionStep::new("file.saveAs", json!({"path": "s.dds", "ddsCompression": "bc2", "ddsMipmaps": false})),
         ]
     );

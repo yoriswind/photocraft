@@ -170,6 +170,10 @@ fn recorded_targa_save_as_keeps_its_bits_and_replays_without_asking() {
     h.run_steps(3);
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
     h.run_steps(3);
+    // Save a Copy now confirms its content/profile choices before the format options.
+    let copy_options = h.state().framework.dialogs.stack().top().unwrap();
+    crate::dialogs::testing::confirm(h.state_mut(), copy_options).unwrap();
+    h.run_steps(3);
     h.key_press(Key::Enter);
     h.run_steps(3);
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveAs", json!({"path": "s.tga", "tgaBits": 32})).unwrap();
@@ -182,7 +186,7 @@ fn recorded_targa_save_as_keeps_its_bits_and_replays_without_asking() {
         steps(&h),
         &vec![
             ActionStep::new("file.saveAs", json!({"path": "t.tga", "tgaBits": 24})),
-            ActionStep::new("file.saveACopy", json!({"path": "copy.tga", "tgaBits": 32})),
+            ActionStep::new("file.saveACopy", json!({"layers": false, "alphaChannels": true, "spotColors": false, "embedProfile": false, "path": "copy.tga", "tgaBits": 32})),
             ActionStep::new("file.saveAs", json!({"path": "s.tga", "tgaBits": 32})),
         ]
     );
@@ -211,6 +215,10 @@ fn recorded_targa_save_as_with_the_documents_name_keeps_only_the_folder() {
     h.run_steps(3);
     crate::menus::invoke(h.state_mut(), &ctx, "file.saveACopy", json!({})).unwrap();
     h.run_steps(3);
+    // Save a Copy now confirms its content/profile choices before the format options.
+    let copy_options = h.state().framework.dialogs.stack().top().unwrap();
+    crate::dialogs::testing::confirm(h.state_mut(), copy_options).unwrap();
+    h.run_steps(3);
     h.key_press(Key::Enter);
     h.run_steps(3);
     h.state_mut().run("actions.stop", json!({})).unwrap();
@@ -218,7 +226,7 @@ fn recorded_targa_save_as_with_the_documents_name_keeps_only_the_folder() {
         steps(&h),
         &vec![
             ActionStep::new("file.saveAs", json!({"folder": "out", "extension": "tga", "tgaBits": 24})),
-            ActionStep::new("file.saveACopy", json!({"path": "copy.tga", "tgaBits": 24})),
+            ActionStep::new("file.saveACopy", json!({"layers": false, "alphaChannels": true, "spotColors": false, "embedProfile": false, "path": "copy.tga", "tgaBits": 24})),
         ]
     );
     writes.borrow_mut().clear();

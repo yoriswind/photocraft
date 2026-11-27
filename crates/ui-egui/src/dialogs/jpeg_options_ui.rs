@@ -254,7 +254,7 @@ pub fn park_dialog(app: &mut PhotocraftApp, path: String, copy: bool, record: &'
     let mut options = JpegOptions::new(quality.min(MAX_QUALITY));
     options.format = ui_format(format);
     let dialog = HostedFormatOptions::new(app.ctx(), ExportOptionsKind::Jpeg).initial(FormatOptions::Jpeg(options));
-    format_prompts::park(app, ParkedSave { doc, path, copy, record, format: ParkedFormat::Jpeg(Parked::new(own_quality)) }, dialog)
+    format_prompts::park(app, ParkedSave { doc, path, copy, copy_source: None, record, format: ParkedFormat::Jpeg(Parked::new(own_quality)) }, dialog)
 }
 
 /// Answers the hosted dialog's request for the size of its current settings, once the worker has
@@ -293,6 +293,23 @@ pub(crate) fn poll_estimate(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
 }
 
+/// Parks a copy using its captured encoding, not whichever tab is live when OK arrives.
+pub(crate) fn park_copy(app: &mut PhotocraftApp, path: String, copy: crate::save_copy_options_ui::CapturedCopy) -> Result<(), String> {
+    let doc = copy.doc.id;
+    let last = remembered(app);
+    let start = match copy.doc.file_encoding.jpeg_quality {
+        Some(q) => Start::own(q),
+        None => match last.quality {
+            Some(quality) => Start { quality, own_quality: None, format: JpegFormat::Baseline },
+            None => Start::percent(app.session.prefs().export.jpeg_quality),
+        },
+    };
+    let mut options = JpegOptions::new(start.quality.min(MAX_QUALITY));
+    options.format = ui_format(last.format.unwrap_or(start.format));
+    let dialog = HostedFormatOptions::new(app.ctx(), ExportOptionsKind::Jpeg).initial(FormatOptions::Jpeg(options));
+    format_prompts::park(app, ParkedSave { doc, path, copy: true, copy_source: Some(copy), record: "file.saveACopy", format: ParkedFormat::Jpeg(Parked::new(start.own_quality)) }, dialog).map(drop)
+}
+
 /// OK: writes the parked save with the dialog's quality and format, and journals it.
 pub(crate) fn finish(app: &mut PhotocraftApp, ctx: &egui::Context, save: ParkedSave, options: JpegOptions) {
     let own_quality = match &save.format {
@@ -318,8 +335,8 @@ pub(crate) fn finish(app: &mut PhotocraftApp, ctx: &egui::Context, save: ParkedS
     if own.is_some() {
         settings.jpeg_quality = own;
     }
-    let ParkedSave { doc, path, copy, record, .. } = save;
-    app.write_answered_save(ctx, doc, path, &settings, copy, (record, step));
+    let ParkedSave { doc, path, copy, copy_source, record, .. } = save;
+    app.write_answered_save(ctx, (doc, path), &settings, copy, copy_source, (record, step));
 }
 
 #[cfg(test)]

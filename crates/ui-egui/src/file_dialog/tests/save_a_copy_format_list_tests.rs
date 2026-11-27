@@ -8,6 +8,12 @@ fn formats(files: &ScriptedFiles) -> Vec<String> {
     last_request(files).filters.into_iter().map(|f| f.extensions[0].clone()).collect()
 }
 
+fn confirm_copy(app: &mut PhotocraftApp) {
+    crate::dialogs::testing::show(app);
+    let id = app.framework.dialogs.stack().top().unwrap();
+    crate::dialogs::testing::confirm(app, id).unwrap();
+}
+
 #[test]
 fn rgb8_save_copy_omits_only_the_three_other_depth_formats() {
     let (mut app, files, _) = app();
@@ -97,6 +103,7 @@ fn typing_an_unavailable_format_into_save_copy_does_not_write_it() {
     menus::invoke(&mut app, &ctx, "file.saveACopy", json!({})).unwrap();
     answer(&files, chose("/pics/copy.PSB"));
     app.poll_file_dialog();
+    confirm_copy(&mut app);
     assert_eq!(*written.borrow(), ["/pics/copy.PSB"]);
 }
 
@@ -109,6 +116,7 @@ fn typed_compatible_extensions_reach_the_copy_writer() {
         menus::invoke(&mut app, &ctx, "file.saveACopy", json!({})).unwrap();
         answer(&files, chose(path));
         app.poll_file_dialog();
+        confirm_copy(&mut app);
         assert_eq!(*written.borrow(), [path]);
     }
 }

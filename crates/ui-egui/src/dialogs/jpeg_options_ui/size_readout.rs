@@ -144,7 +144,10 @@ impl Source {
     fn from_save(app: &mut PhotocraftApp, save: &crate::format_prompts::ParkedSave) -> Option<Self> {
         let crate::format_prompts::ParkedFormat::Jpeg(parked) = &save.format else { return None };
         let st = app.session.documents().iter().find(|st| st.doc.id == save.doc)?;
-        let (doc, revision) = (Arc::clone(&st.doc), st.revision);
+        let (doc, revision) = match &save.copy_source {
+            Some(copy) => (Arc::clone(&copy.doc), 0),
+            None => (Arc::clone(&st.doc), st.revision),
+        };
         Some(Source { doc, revision, base: save.settings(app), own_quality: parked.own_quality })
     }
 

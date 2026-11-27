@@ -145,6 +145,7 @@ pub use dialogs::fill_ui;
 pub use dialogs::filter_dialog;
 use dialogs::filter_preview_ui;
 pub(crate) use dialogs::format_prompts;
+pub(crate) use dialogs::save_copy_options_ui;
 pub use dialogs::gallery_ui;
 use dialogs::guide_edit;
 pub use dialogs::guide_layout_ui;
@@ -679,6 +680,10 @@ pub struct PhotocraftApp {
     /// A save parked behind a format's options prompt (TIFF, Targa, JPEG, DDS), run when the
     /// prompt closes (`format_prompts`).
     pub(crate) parked_save: Option<format_prompts::ParkedSave>,
+    /// The copy-only options prompt and its immutable document snapshot.
+    pub(crate) pending_copy: Option<save_copy_options_ui::Pending>,
+    /// Copy content choices, shared across formats for this run only.
+    pub(crate) copy_remembered: save_copy_options_ui::Remembered,
     /// Where each document was last saved or exported to through a dialog (#1826): its next Save
     /// As or export dialog starts there rather than beside the document. Session-only.
     pub(crate) save_dirs: HashMap<photocraft_doc::DocId, std::path::PathBuf>,
@@ -1115,3 +1120,6 @@ mod clone_stamp_indexed_bar_tests;
 
 #[cfg(test)]
 mod place_visible_centre_tests;
+
+#[cfg(test)]
+mod save_a_copy_icc_option_tests;

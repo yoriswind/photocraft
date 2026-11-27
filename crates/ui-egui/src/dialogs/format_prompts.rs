@@ -22,6 +22,8 @@ pub struct ParkedSave {
     pub path: String,
     /// Save a Copy: the document keeps its path and unsaved changes.
     pub copy: bool,
+    /// Only Save a Copy carries prepared content/profile choices, never the live document.
+    pub(crate) copy_source: Option<crate::save_copy_options_ui::CapturedCopy>,
     /// The step the answered save is recorded as, so an action being recorded keeps it:
     /// `file.saveAs` for Save As (#2032), `file.saveACopy` for Save a Copy (#4373), and
     /// `file.save` (with no path) for File › Save writing the document's own file (#3531).
@@ -47,20 +49,23 @@ impl ParkedSave {
     /// if another tab is active now. Closed meanwhile, the active tab's, and the write reports
     /// the closed document.
     pub fn settings(&self, app: &mut PhotocraftApp) -> ExportSettings {
+        if let Some(copy) = &self.copy_source { return copy.settings.clone(); }
         app.with_document(self.doc, |app| Ok(app.save_settings())).unwrap_or_else(|_| app.save_settings())
     }
 
     /// The params the answered save is recorded with before the format adds its own: the path,
     /// none for a plain Save, which writes whichever file the action is played on (#3531).
     pub fn step(&self) -> Value {
-        if self.record == "file.save" { json!({}) } else { json!({"path": self.path}) }
+        let mut step = if self.record == "file.save" { json!({}) } else { json!({"path": self.path}) };
+        if let Some(copy) = &self.copy_source { copy.options.record(&mut step); }
+        step
     }
 }
 
 /// Parks `save` behind `dialog` and opens it; the id of the dialog. Refuses while another save
 /// waits.
 pub fn park(app: &mut PhotocraftApp, save: ParkedSave, dialog: HostedFormatOptions) -> Result<DialogId, String> {
-    if app.parked_save.is_some() {
+    if app.save_options_open() {
         return Err(crate::SAVE_OPTIONS_OPEN.into());
     }
     let id = app.framework.dialogs.open(dialog);

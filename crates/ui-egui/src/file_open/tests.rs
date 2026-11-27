@@ -52,6 +52,11 @@ fn app_over(files: Arc<ScriptedFiles>) -> (Box<PhotocraftApp>, Written) {
 /// The end of a frame: the dialog asked for is shown, and its answer acted on.
 fn answer(app: &mut PhotocraftApp) {
     app.poll_file_dialog();
+    if app.pending_copy.is_some() {
+        crate::dialogs::testing::show(app);
+        let id = app.framework.dialogs.stack().top().unwrap();
+        crate::dialogs::testing::confirm(app, id).unwrap();
+    }
 }
 
 /// The pick answered with the files at `paths`.
@@ -1444,7 +1449,7 @@ fn save_a_copy_is_recorded_and_replayed_as_a_copy() {
     answer(&mut app);
     app.run("actions.stop", json!({})).unwrap();
     // PLAN: assumed panels-w29's `ActionStep` is `craft::automation::actions::ActionStep`
-    let saved = craft::automation::actions::ActionStep::new("file.saveACopy", json!({"path": "/pics/copy.png"}));
+    let saved = craft::automation::actions::ActionStep::new("file.saveACopy", json!({"path": "/pics/copy.png", "layers": false, "alphaChannels": false, "spotColors": false, "embedProfile": false}));
     assert_eq!(app.session.actions().list.actions()[0].steps.last(), Some(&saved));
     assert_eq!(crate::actions::label_of("file.saveACopy"), "Save a Copy");
     written.borrow_mut().clear();

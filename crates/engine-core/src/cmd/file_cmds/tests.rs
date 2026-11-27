@@ -483,7 +483,7 @@ fn batch_quiet_profile_open_uses_caller_policy_and_retains_diagnostics() {
     let mut fixture = crate::session();
     fixture.execute("file.openAs", json!({"path":source})).unwrap();
     fixture.execute("edit.assignProfile", json!({"profile":"display-p3"})).unwrap();
-    fixture.execute("file.saveACopy", json!({"path":source,"overwrite":true})).unwrap();
+    fixture.execute("file.saveACopy", json!({"path":source,"overwrite":true,"embedProfile":true})).unwrap();
     let original = std::fs::read(&source).unwrap();
     let bad = join(&dir, "b.png");
     std::fs::write(&bad, b"not an image").unwrap();
@@ -668,7 +668,7 @@ fn background_recorded_batch_keeps_opening_and_destination_policies() {
     let mut fixture = crate::session();
     fixture.execute("file.openAs", json!({"path":source})).unwrap();
     fixture.execute("edit.assignProfile", json!({"profile":"display-p3"})).unwrap();
-    fixture.execute("file.saveACopy", json!({"path":source,"overwrite":true})).unwrap();
+    fixture.execute("file.saveACopy", json!({"path":source,"overwrite":true,"embedProfile":true})).unwrap();
     let original = std::fs::read(&source).unwrap();
     let missing = join(&dir, "missing.png");
     let output = join(&dir, "out");

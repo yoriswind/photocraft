@@ -156,7 +156,22 @@ pub fn park_dialog(app: &mut PhotocraftApp, path: String, copy: bool, record: &'
     let dialog =
         HostedFormatOptions::new(app.ctx(), ExportOptionsKind::Tiff).initial(FormatOptions::Tiff(options)).tiff_document(layered, has_transparency, layer_note);
     let parked = Parked { layered, has_transparency, layer_note };
-    format_prompts::park(app, ParkedSave { doc, path, copy, record, format: ParkedFormat::Tiff(parked) }, dialog)
+    format_prompts::park(app, ParkedSave { doc, path, copy, copy_source: None, record, format: ParkedFormat::Tiff(parked) }, dialog)
+}
+
+/// Layers was already chosen in Save a Copy; this prompt keeps the existing compression choices.
+pub(crate) fn park_copy(app: &mut PhotocraftApp, path: String, copy: crate::save_copy_options_ui::CapturedCopy) -> Result<(), String> {
+    let doc = copy.doc.id;
+    let has_transparency = copy.doc.background().is_none();
+    let Remembered { compression, pyramid } = app.tiff_remembered;
+    let mut options = TiffOptions::default();
+    options.compression = ui_compression(compression);
+    options.pyramid = pyramid;
+    options.transparency = copy.doc.channels.is_empty() && copy.doc.quick_mask.is_none();
+    let dialog = HostedFormatOptions::new(app.ctx(), ExportOptionsKind::Tiff)
+        .initial(FormatOptions::Tiff(options)).tiff_document(false, has_transparency, false);
+    let parked = Parked { layered: false, has_transparency, layer_note: false };
+    format_prompts::park(app, ParkedSave { doc, path, copy: true, copy_source: Some(copy), record: "file.saveACopy", format: ParkedFormat::Tiff(parked) }, dialog).map(drop)
 }
 
 /// OK: writes the parked save with the dialog's answer, and journals it.
@@ -179,8 +194,8 @@ pub(crate) fn finish(app: &mut PhotocraftApp, ctx: &egui::Context, save: ParkedS
     }
     choice.record(&mut step);
     let settings = choice.apply(save.settings(app));
-    let ParkedSave { doc, path, copy, record, .. } = save;
-    app.write_answered_save(ctx, doc, path, &settings, copy || options.discard_layers, (record, step));
+    let ParkedSave { doc, path, copy, copy_source, record, .. } = save;
+    app.write_answered_save(ctx, (doc, path), &settings, copy || options.discard_layers, copy_source, (record, step));
 }
 
 #[cfg(test)]

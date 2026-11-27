@@ -44,7 +44,7 @@ pub fn park(app: &mut PhotocraftApp, path: String, copy: bool, record: &'static 
 pub fn park_dialog(app: &mut PhotocraftApp, path: String, copy: bool, record: &'static str) -> Result<DialogId, String> {
     let doc = app.active_doc_id()?;
     let dialog = HostedFormatOptions::new(app.ctx(), ExportOptionsKind::Dds).initial(FormatOptions::Dds(UiDdsOptions::default()));
-    format_prompts::park(app, ParkedSave { doc, path, copy, record, format: ParkedFormat::Dds }, dialog)
+    format_prompts::park(app, ParkedSave { doc, path, copy, copy_source: None, record, format: ParkedFormat::Dds }, dialog)
 }
 
 /// The codec's compression for the framework's.
@@ -57,14 +57,21 @@ fn codec_compression(c: UiDdsCompression) -> DdsCompression {
     }
 }
 
+/// Parks the immutable copy while DDS chooses only compression and mipmaps.
+pub(crate) fn park_copy(app: &mut PhotocraftApp, path: String, copy: crate::save_copy_options_ui::CapturedCopy) -> Result<(), String> {
+    let doc = copy.doc.id;
+    let dialog = HostedFormatOptions::new(app.ctx(), ExportOptionsKind::Dds).initial(FormatOptions::Dds(UiDdsOptions::default()));
+    format_prompts::park(app, ParkedSave { doc, path, copy: true, copy_source: Some(copy), record: "file.saveACopy", format: ParkedFormat::Dds }, dialog).map(drop)
+}
+
 /// OK: writes the parked save with the dialog's options, and journals it.
 pub(crate) fn finish(app: &mut PhotocraftApp, ctx: &egui::Context, save: ParkedSave, options: UiDdsOptions) {
     let options = DdsOptions { compression: codec_compression(options.compression), mipmaps: options.mipmaps };
     let settings = ExportSettings { dds: options, ..save.settings(app) };
     let mut step = save.step();
     record(options, &mut step);
-    let ParkedSave { doc, path, copy, record, .. } = save;
-    app.write_answered_save(ctx, doc, path, &settings, copy, (record, step));
+    let ParkedSave { doc, path, copy, copy_source, record, .. } = save;
+    app.write_answered_save(ctx, (doc, path), &settings, copy, copy_source, (record, step));
 }
 
 #[cfg(test)]

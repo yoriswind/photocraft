@@ -43,7 +43,15 @@ pub fn park_dialog(app: &mut PhotocraftApp, path: String, copy: bool, record: &'
     let doc = app.active_doc_id()?;
     let bits = app.session.active().map_or(TgaBits::Bits24, |st| photocraft_io::tga_default_bits(&st.doc));
     let dialog = HostedFormatOptions::new(app.ctx(), ExportOptionsKind::Targa).initial(FormatOptions::Targa(TargaOptions::new(bits.bits())));
-    format_prompts::park(app, ParkedSave { doc, path, copy, record, format: ParkedFormat::Targa }, dialog)
+    format_prompts::park(app, ParkedSave { doc, path, copy, copy_source: None, record, format: ParkedFormat::Targa }, dialog)
+}
+
+/// The copy's own prepared channels decide the initial bits, even if the live document changed.
+pub(crate) fn park_copy(app: &mut PhotocraftApp, path: String, copy: crate::save_copy_options_ui::CapturedCopy) -> Result<(), String> {
+    let doc = copy.doc.id;
+    let bits = photocraft_io::tga_default_bits(&copy.doc);
+    let dialog = HostedFormatOptions::new(app.ctx(), ExportOptionsKind::Targa).initial(FormatOptions::Targa(TargaOptions::new(bits.bits())));
+    format_prompts::park(app, ParkedSave { doc, path, copy: true, copy_source: Some(copy), record: "file.saveACopy", format: ParkedFormat::Targa }, dialog).map(drop)
 }
 
 /// OK: writes the parked save at the dialog's bits per pixel, and journals it.
@@ -52,8 +60,8 @@ pub(crate) fn finish(app: &mut PhotocraftApp, ctx: &egui::Context, save: ParkedS
     let settings = ExportSettings { tga_bits: Some(bits), ..save.settings(app) };
     let mut step = save.step();
     step["tgaBits"] = bits.bits().into();
-    let ParkedSave { doc, path, copy, record, .. } = save;
-    app.write_answered_save(ctx, doc, path, &settings, copy, (record, step));
+    let ParkedSave { doc, path, copy, copy_source, record, .. } = save;
+    app.write_answered_save(ctx, (doc, path), &settings, copy, copy_source, (record, step));
 }
 
 #[cfg(test)]
