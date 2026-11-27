@@ -14,7 +14,7 @@ const OPERATIONS: [(&str, &str); 5] = [
     ("layer.combineShapes.mergeShapeComponents", "Merge Shape Components"),
 ];
 
-fn fixture() -> PhotocraftApp {
+fn fixture() -> Box<PhotocraftApp> {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
     app.run("file.new", json!({"width": 96, "height": 64})).unwrap();
     let a = app.run("shape.create", json!({"kind": "rect", "rect": [8, 8, 40, 32], "fill": "#cc4422"})).unwrap()["layer"].as_u64().unwrap();
@@ -23,7 +23,7 @@ fn fixture() -> PhotocraftApp {
     app
 }
 
-fn harness(mut app: PhotocraftApp, width: f32, scale: f32) -> Harness<'static, PhotocraftApp> {
+fn harness(mut app: Box<PhotocraftApp>, width: f32, scale: f32) -> Harness<'static, Box<PhotocraftApp>> {
     // The shape tool's options can offer similarly named actions; this witness addresses Properties.
     app.ui.tool = crate::state::Tool::Brush;
     let mut h = Harness::builder()
