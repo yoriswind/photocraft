@@ -573,18 +573,28 @@ pub(super) fn path_to_shape(s: &mut Session, p: &Value) -> Result<Value> {
 /// The History name of a `shape.edit` of layer `id`: an edit of one arrowhead setting of a line
 /// is named after it, "Change Arrowhead End" (#13267). The reference application was measured for
 /// End and Width; Start, Length and Concavity follow the same pattern. Rounding a live triangle
-/// alone is "Change Rounded Triangle" (#13354); a three-sided Polygon is not a Triangle and keeps
-/// "Edit Shape" until the Polygon naming issue lands. Any other edit, several keys at once, or
-/// these keys sent to another shape stay "Edit Shape".
+/// alone is "Change Rounded Triangle" (#13354). A live polygon's sides or corner-radius change
+/// alone is "Change Polygon Sides" or "Change Rounded Polygon" (#13300); stars are separate.
+/// Other edits, several keys at once and unchanged polygon parameters stay "Edit Shape".
 fn edit_history_name(s: &Session, id: LayerId, p: &Value) -> &'static str {
     const EDIT: &str = "Edit Shape";
+    // The canvas corner widget keeps its unmeasured label; headless/property edits use the inferred name.
+    if p.get("historyName").and_then(Value::as_str) == Some(EDIT) {
+        return EDIT;
+    }
     let live = s.active().and_then(|st| st.doc.layer(id)).and_then(|l| match &l.content {
         LayerContent::Shape(sh) => sh.live.as_ref(),
         _ => None,
     });
     let Some(o) = p.as_object() else { return EDIT };
-    let mut changed = o.keys().map(String::as_str).filter(|k| !matches!(*k, "layer" | "coalesce") && !k.starts_with("__"));
+    let mut changed = o.keys().map(String::as_str).filter(|k| !matches!(*k, "layer" | "coalesce" | "historyName") && !k.starts_with("__"));
     let line = matches!(live, Some(LiveShape::Line { .. } | LiveShape::ArrowLine { .. }));
+    let polygon_changed = || {
+        live.is_some_and(|l| {
+            matches!(l, LiveShape::Polygon { star_ratio, .. } if *star_ratio >= 1.0)
+                && live_from_params("shape.edit", "polygon", p, Some(l)).is_ok_and(|next| &next != l)
+        })
+    };
     match (changed.next(), changed.next()) {
         (Some("arrowStart"), None) if line => "Change Arrowhead Start",
         (Some("arrowEnd"), None) if line => "Change Arrowhead End",
@@ -592,12 +602,17 @@ fn edit_history_name(s: &Session, id: LayerId, p: &Value) -> &'static str {
         (Some("arrowLength"), None) if line => "Change Arrowhead Length",
         (Some("arrowConcavity"), None) if line => "Change Arrowhead Concavity",
         (Some("cornerRadius"), None) if matches!(live, Some(LiveShape::Triangle { .. })) => "Change Rounded Triangle",
+        (Some("sides"), None) if polygon_changed() => "Change Polygon Sides",
+        (Some("cornerRadius"), None) if polygon_changed() => "Change Rounded Polygon",
         _ => EDIT,
     }
 }
 
 pub(super) fn shape_edit(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "shape.edit";
+    if p.get("historyName").is_some_and(|v| !v.is_null() && v.as_str() != Some("Edit Shape")) {
+        return Err(bad(CMD, "`historyName` must be \"Edit Shape\""));
+    }
     let id = layer_id(s, p)?;
     let fg = s.tools.foreground;
     let fgc = Color::rgba(fg[0], fg[1], fg[2], fg[3]);

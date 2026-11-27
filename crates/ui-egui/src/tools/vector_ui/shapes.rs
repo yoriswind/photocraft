@@ -258,6 +258,8 @@ fn report(app: &mut PhotocraftApp, e: String) {
 /// make a shape layer. A geometry too small to draw changes nothing.
 pub fn finish_drag(app: &mut PhotocraftApp, kind: ShapeKind, geometry: &ShapeGeometry, mods: Mods) {
     let Some(geometry) = snapped(geometry, mods.shift, snaps_to_pixels(app, kind)) else { return };
+    let history = tool_history_name(kind)
+        .filter(|_| kind != ShapeKind::Polygon || matches!(app.ui.tool_options.shape_mode, super::VectorMode::Shape | super::VectorMode::Path));
     if draws_path(&app.ui.tool_options) {
         // Path mode: the outline joins the work path (one more subpath), and no layer is made.
         let Some(outline) = outline_of(app, kind, &geometry) else { return };
@@ -280,7 +282,7 @@ pub fn finish_drag(app: &mut PhotocraftApp, kind: ShapeKind, geometry: &ShapeGeo
             sp.op = path_op_of(op);
         }
         let path = photocraft_engine::vector_cmds::path_json(&path);
-        match app.run("path.set", json!({"name": "work", "path": path, "historyName": tool_history_name(kind)})) {
+        match app.run("path.set", json!({"name": "work", "path": path, "historyName": history})) {
             Ok(_) => app.ui.selected_path = Some("work".into()),
             Err(e) => report(app, e),
         }
@@ -321,7 +323,7 @@ pub fn finish_drag(app: &mut PhotocraftApp, kind: ShapeKind, geometry: &ShapeGeo
         Ok(p) => with_tool_radius(app, kind, p),
         Err(e) => return report(app, e),
     };
-    p["historyName"] = json!(tool_history_name(kind));
+    p["historyName"] = json!(history);
     // With an operation other than New Layer the drag joins the active shape layer.
     if let Some(op) = drag_path_op(app)
         && let Some(id) = super::options::selected_shape(&app.session)
@@ -351,11 +353,13 @@ fn path_op_of(op: &str) -> photocraft_doc::vector::PathOp {
 }
 
 /// The tool's History label for a new shape layer or a Work Path edit, when defined.
+/// The callers retain the unmeasured Polygon Pixels-mode label (#13300).
 pub(crate) fn tool_history_name(kind: ShapeKind) -> Option<&'static str> {
     match kind {
         ShapeKind::Line => Some("Line Tool"),
         ShapeKind::Triangle => Some("Triangle Tool"),
         ShapeKind::Ellipse => Some("Ellipse Tool"),
+        ShapeKind::Polygon => Some("Polygon Tool"),
         _ => None,
     }
 }
@@ -368,6 +372,8 @@ pub(super) fn fill_param(app: &PhotocraftApp) -> Value {
 /// step named `history` (the commands' own name without one): the Create Rectangle / Ellipse / …
 /// dialogs' OK (`shape_dialog`). The geometry is used as given, with no pixel rounding.
 pub fn create_geometry(app: &mut PhotocraftApp, geometry: &ShapeGeometry, kind: ShapeKind, history: Option<&str>) -> Result<Value, String> {
+    let history = history
+        .filter(|_| kind != ShapeKind::Polygon || matches!(app.ui.tool_options.shape_mode, super::VectorMode::Shape | super::VectorMode::Path));
     let mut p = create_params(app, geometry, kind)?;
     if let Some(name) = history {
         p["historyName"] = json!(name);
@@ -549,3 +555,70 @@ mod triangle_history_ui_tests {
 #[cfg(test)]
 #[path = "star_align_edges_tests.rs"]
 mod star_align_edges_tests;
+
+#[cfg(test)]
+mod polygon_history_ui_tests {
+    use super::*;
+    use crate::canvas::testing;
+    use craft::draw::ui::shape_drag::CreateShapeDialog;
+    use craft::ui::dialog::StackDialog as _;
+
+    fn app() -> Box<PhotocraftApp> {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"width": 400, "height": 300})).unwrap();
+        app.ui.tool = Tool::Polygon;
+        app.ui.tool_options.polygon_sides = 5;
+        app.ui.tool_options.shape_mode = super::super::VectorMode::Shape;
+        app
+    }
+
+    #[test]
+    fn polygon_drags_record_one_tool_step_each_in_shape_and_path_modes() {
+        for mode in [super::super::VectorMode::Shape, super::super::VectorMode::Path] {
+            let mut app = app();
+            app.ui.tool_options.shape_mode = mode;
+            for (index, x) in [20.0, 150.0].into_iter().enumerate() {
+                let before = app.session.active().unwrap();
+                let (steps, layers) = (before.history.past_len(), before.doc.layer_count());
+                testing::press(&mut app, [x, 20.0], egui::Modifiers::NONE);
+                testing::move_to(&mut app, [x + 100.0, 100.0], egui::Modifiers::NONE);
+                testing::release(&mut app, [x + 100.0, 100.0], egui::Modifiers::NONE);
+                let st = app.session.active().unwrap();
+                assert_eq!(st.history.past_len(), steps + 1, "{mode:?}, drag {index}");
+                assert_eq!(st.history.undo_label(), Some("Polygon Tool"), "{mode:?}, drag {index}");
+                if mode == super::super::VectorMode::Path {
+                    assert_eq!(st.doc.layer_count(), layers);
+                    assert_eq!(st.doc.work_path.as_ref().unwrap().subpaths.len(), index + 1);
+                } else {
+                    assert_eq!(st.doc.layer_count(), layers + 1);
+                    assert_eq!(st.doc.layer(st.active_layer.unwrap()).unwrap().name, format!("Polygon {}", index + 1));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn create_polygon_cancel_is_unchanged_and_ok_records_one_polygon_tool_step() {
+        let mut app = app();
+        let before = app.session.active().unwrap();
+        let (steps, layers) = (before.history.past_len(), before.doc.layer_count());
+        testing::click(&mut app, [20.0, 20.0], egui::Modifiers::NONE);
+        let id = app.framework.dialogs.get::<CreateShapeDialog>().unwrap().id();
+        assert_eq!(app.session.active().unwrap().history.past_len(), steps);
+        crate::dialogs::testing::cancel(&mut app, id).unwrap();
+        assert!(app.framework.dialogs.is_empty());
+        assert_eq!(app.session.active().unwrap().history.past_len(), steps);
+        assert_eq!(app.session.active().unwrap().doc.layer_count(), layers);
+
+        testing::click(&mut app, [20.0, 20.0], egui::Modifiers::NONE);
+        let id = app.framework.dialogs.get::<CreateShapeDialog>().unwrap().id();
+        assert_eq!(app.session.active().unwrap().history.past_len(), steps);
+        crate::dialogs::testing::confirm(&mut app, id).unwrap();
+        assert!(app.framework.dialogs.is_empty());
+        let st = app.session.active().unwrap();
+        assert_eq!(st.history.past_len(), steps + 1);
+        assert_eq!(st.history.undo_label(), Some("Polygon Tool"));
+        assert_eq!(st.doc.layer_count(), layers + 1);
+        assert_eq!(st.doc.layer(st.active_layer.unwrap()).unwrap().name, "Polygon 1");
+    }
+}

@@ -432,11 +432,19 @@ fn commit_corners(app: &mut PhotocraftApp, targets: &[CornerTarget], change: Opt
     for edit in &change.targets {
         let Some(target) = targets.iter().find(|t| t.key == edit.key) else { continue };
         let radii = &edit.radii;
-        let params = if target.individual {
+        let mut params = if target.individual {
             json!({"layer": edit.key, "radii": radii, "coalesce": key})
         } else {
             json!({"layer": edit.key, "cornerRadius": radii.first().copied().unwrap_or(0.0), "coalesce": key})
         };
+        // #13300 measures Properties, not this widget: declare the unchanged canvas label explicitly.
+        let polygon = app.session.active().and_then(|st| st.doc.layer(LayerId(edit.key))).is_some_and(|layer| match &layer.content {
+            LayerContent::Shape(sh) => matches!(sh.live.as_ref(), Some(LiveShape::Polygon { star_ratio, .. }) if *star_ratio >= 1.0),
+            _ => false,
+        });
+        if polygon {
+            params["historyName"] = json!("Edit Shape");
+        }
         if !run_or_report(app, "shape.edit", params) {
             break;
         }

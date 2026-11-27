@@ -115,7 +115,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Edit Shape",
             [],
             leak(format!(
-                r##"{{"layer":id?,"path":{{…}}? (replaces; drops live shape),"kind":str?,"rect":[x,y,w,h]?,"radii":[tl,tr,br,bl]|r?,"sides":n?,"starRatio":r?,"cornerRadius":px?,"from":[x,y]?,"to":[x,y]?,"weight":px? (live-shape params regenerate the path),"arrowStart":bool?,"arrowEnd":bool?,"arrowWidth":px?,"arrowLength":px?,"arrowConcavity":-50..50? (line arrows),"move":[dx,dy]?,"transform":[a,b,c,d,e,f]?,"op":"combine|…"? + "subpath":index? (default all but the first),"fillRule":"nonzero|evenodd"?,{fill}?,{stroke}? (merged into the current stroke),"useAlignedRendering":bool?,"name":str?}} → shape.info"##
+                r##"{{"layer":id?,"path":{{…}}? (replaces; drops live shape),"kind":str?,"rect":[x,y,w,h]?,"radii":[tl,tr,br,bl]|r?,"sides":n?,"starRatio":r?,"cornerRadius":px?,"historyName":str? (only Edit Shape: retain the caller's existing label),"from":[x,y]?,"to":[x,y]?,"weight":px? (live-shape params regenerate the path),"arrowStart":bool?,"arrowEnd":bool?,"arrowWidth":px?,"arrowLength":px?,"arrowConcavity":-50..50? (line arrows),"move":[dx,dy]?,"transform":[a,b,c,d,e,f]?,"op":"combine|…"? + "subpath":index? (default all but the first),"fillRule":"nonzero|evenodd"?,{fill}?,{stroke}? (merged into the current stroke),"useAlignedRendering":bool?,"name":str?}} → shape.info"##
             )),
             has_layer,
             shape_edit
@@ -396,3 +396,6 @@ mod line_arrowhead_history_names_tests;
 
 #[cfg(test)]
 mod ellipse_tool_history_name_tests;
+
+#[cfg(test)]
+mod polygon_history_names_tests;
