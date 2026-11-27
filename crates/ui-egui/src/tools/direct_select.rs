@@ -506,6 +506,9 @@ mod tests;
 mod nudge_history_tests;
 
 #[cfg(test)]
+mod ctrl_path_selection_tests;
+
+#[cfg(test)]
 mod convert_point_history_tests;
 
 #[cfg(test)]

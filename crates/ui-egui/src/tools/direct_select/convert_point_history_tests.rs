@@ -50,11 +50,12 @@ pub(super) fn added(app: &mut PhotocraftApp, gesture: impl FnOnce(&mut Photocraf
 }
 
 /// `tool` with the smooth anchor selected so its handles show: a ⌘-click, Direct Selection in
-/// each of these tools (a selection made with another tool is dropped when the Pen is taken).
+/// the other tools; Direct Selection uses a plain click (Ctrl/Cmd selects the whole subpath).
+/// A selection made with another tool is dropped when the Pen is taken.
 fn with_shown_handles(tool: Tool) -> Box<PhotocraftApp> {
     let mut app = app(tool);
     with_path(&mut app);
-    click(&mut app, [120.0, 40.0], Modifiers::COMMAND);
+    click(&mut app, [120.0, 40.0], if tool == Tool::DirectSelection { Modifiers::NONE } else { Modifiers::COMMAND });
     assert_eq!(app.ui.direct_selection.anchors, vec![[0, 1]]);
     app
 }

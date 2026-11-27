@@ -74,11 +74,26 @@ pub(crate) fn apply(app: &mut PhotocraftApp, output: &BezierOutput, refs: &[Path
         // refused commit keeps the draft and says why.
         crate::vector_ui::pen_commit(app, false);
     }
+    #[cfg(test)]
+    app.ctx().data_mut(|data| data.insert_temp(test_preview_id(), output.edit.value().cloned()));
+}
+
+#[cfg(test)]
+fn test_preview_id() -> egui::Id {
+    egui::Id::unique("photocraft.test.directSelection.shownPaths")
+}
+
+/// The actual last shown overlay value, only for the original pre-commit geometry oracle.
+#[cfg(test)]
+pub(super) fn test_preview(app: &PhotocraftApp) -> Option<Vec<EditPath>> {
+    app.ctx().data_mut(|data| data.get_temp::<Option<Vec<EditPath>>>(test_preview_id())).flatten()
 }
 
 /// A pass that shows no editing overlay: a gesture it began has nobody to end it.
 pub(crate) fn not_shown(app: &mut PhotocraftApp) {
     app.ui.direct_selection.editing = None;
+    #[cfg(test)]
+    app.ctx().data_mut(|data| data.remove::<Option<Vec<EditPath>>>(test_preview_id()));
 }
 
 /// Deletes anchors `[subpath, knot]` of `path`, highest index first so the lower ones stay valid.

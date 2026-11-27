@@ -72,6 +72,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
 
 /// The cells of the bar for `tool`.
 fn bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool, open: &mut BarOpen) {
+    if tool == Tool::DirectSelection {
+        Checkbox::new(Bind::bound(&mut app.ui.tool_options.constrain_path_dragging)).label(label(tl!("Constrain Path Dragging"))).show(ui);
+        Divider::vertical().show(ui);
+    }
     let target = selected_shape(&app.session);
     // Direct Selection shares the Path Selection bar (#13219).
     if matches!(tool, Tool::PathSelection | Tool::DirectSelection) && !crate::direct_select::active_paths(app).is_empty() {

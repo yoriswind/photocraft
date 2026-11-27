@@ -134,7 +134,7 @@ fn move_anchors(s: &mut Session, p: &Value) -> Result<Value> {
     if duplicate && p.get("curvature").and_then(Value::as_bool).unwrap_or(false) {
         return Err(bad(CMD, "`duplicate` and `curvature` can't be combined"));
     }
-    let label = step_name(CMD, p, if duplicate { "Drag Path" } else { "Drag Anchor Points" }, &["Drag Path", "Drag Anchor Point", "Nudge Path"])?;
+    let label = step_name(CMD, p, if duplicate { "Drag Path" } else { "Drag Anchor Points" }, &["Drag Path", "Drag Paths", "Drag Anchor Point", "Nudge Path"])?;
     let curvature = p.get("curvature").and_then(Value::as_bool).unwrap_or(false);
     edit_path(s, CMD, p, label, |path| {
         if duplicate {
@@ -173,7 +173,14 @@ fn bend_segment(s: &mut Session, p: &Value) -> Result<Value> {
         None => 0.5,
     };
     let d = offset(CMD, p)?;
-    edit_path(s, CMD, p, "Drag Segment", |path| edit::bend_segment(path, k, t, d))
+    let constrain = match p.get("constrain") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(value)) => *value,
+        Some(_) => return Err(bad(CMD, "`constrain` must be true or false")),
+    };
+    edit_path(s, CMD, p, "Drag Segment", |path| {
+        if constrain { edit::bend_segment_constrained(path, k, t, d) } else { edit::bend_segment(path, k, t, d) }
+    })
 }
 
 fn convert_point(s: &mut Session, p: &Value) -> Result<Value> {
@@ -361,7 +368,7 @@ pub fn specs() -> Vec<CommandSpec> {
         journal: true,
     };
     vec![
-        spec("path.moveAnchors", "Drag Anchor Points", r#""anchors":[[subpath,knot],…],"move":[dx,dy],"curvature":bool=false (anchors move with their handles; Direct Selection drag. curvature = the Curvature Pen's drag: every smooth knot of the touched subpaths gets its handles recomputed so the curve flows through the anchors),"duplicate":bool=false (anchors = all of one subpath's; that subpath is copied, with its operation (a joined subpath's copy takes its component's), as the path's last subpath, and the copy's anchors move instead; the source stays; Direct Selection's ⌥-drag on a segment, Add Anchor Point's ⌥-drag; not with curvature),"stepName":"Drag Path"|"Drag Anchor Point"|"Nudge Path"? (History step name; the Convert Point tool sends "Drag Path" when it drags a whole path, Direct Selection "Drag Anchor Point" when it drags one anchor and "Nudge Path" for its arrow-key nudges, Add Anchor Point "Drag Path" when it duplicates a subpath; default "Drag Anchor Points", "Drag Path" with duplicate; any other value is refused)"#.into(), move_anchors),
+        spec("path.moveAnchors", "Drag Anchor Points", r#""anchors":[[subpath,knot],…],"move":[dx,dy],"curvature":bool=false (anchors move with their handles; Direct Selection drag. curvature = the Curvature Pen's drag: every smooth knot of the touched subpaths gets its handles recomputed so the curve flows through the anchors),"duplicate":bool=false (anchors = all of one subpath's; that subpath is copied, with its operation (a joined subpath's copy takes its component's), as the path's last subpath, and the copy's anchors move instead; the source stays; Direct Selection's ⌥-drag on a segment, Add Anchor Point's ⌥-drag; not with curvature),"stepName":"Drag Path"|"Drag Paths"|"Drag Anchor Point"|"Nudge Path"? (History step name; Direct Selection sends "Drag Paths" for its Ctrl/Cmd whole-subpath drag; the Convert Point tool sends "Drag Path" when it drags a whole path, Direct Selection "Drag Anchor Point" when it drags one anchor and "Nudge Path" for its arrow-key nudges, Add Anchor Point "Drag Path" when it duplicates a subpath; default "Drag Anchor Points", "Drag Path" with duplicate; any other value is refused)"#.into(), move_anchors),
         spec(
             "path.moveHandle",
             "Drag Control Point",
@@ -371,7 +378,7 @@ pub fn specs() -> Vec<CommandSpec> {
         spec(
             "path.bendSegment",
             "Drag Segment",
-            r#""subpath":i,"knot":j (the segment leaving it),"t":0..1=0.5 (where it was grabbed),"move":[dx,dy] (a straight segment moves with its anchors; a curve reshapes through the dragged point)"#.into(),
+            r#""subpath":i,"knot":j (the segment leaving it),"t":0..1=0.5 (where it was grabbed),"move":[dx,dy],"constrain":bool=false (keep the segment handles on their original directions; straight, retracted-handle and near-anchor drags keep the unconstrained behavior) (a straight segment moves with its anchors; a curve reshapes through the dragged point)"#.into(),
             bend_segment,
         ),
         spec(
