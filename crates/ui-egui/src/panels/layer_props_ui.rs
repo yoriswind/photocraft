@@ -7,7 +7,7 @@ use craft::behavior::kurbo::{Point, Rect, Size};
 use craft::behavior::{ColumnWidth, EditEvent, EditEvents, Mixed, RulerUnits, Ticks};
 use craft::draw::ui::{SizeUnit, TransformFields, TransformGroups, TransformRow};
 use craft::ui::bars::AlignBar;
-use craft::ui::buttons::Button;
+use craft::ui::buttons::{Button, IconButton};
 use craft::ui::canvas::{CanvasRulers, RulerText};
 use craft::ui::contract::{Bind, Props as _, Show as _, ShowContainer as _, Sizing};
 use craft::ui::layout_components::Grid;
@@ -211,6 +211,26 @@ pub fn properties(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
 fn align_and_distribute(ui: &mut egui::Ui) {
     Section::new(tl!("Align and Distribute")).show(ui, |ui, _| {
         AlignBar::new().show(ui);
+    });
+}
+
+/// The Layer menu's operations for several selected layers, with the same command state and dispatch.
+/// Activations go through the frame's command queue; merging shapes never removes a layer during this panel pass.
+pub(super) fn combine_shapes(ui: &mut egui::Ui) {
+    Section::new(tl!("Combine Shapes")).show(ui, |ui, _| {
+        ui.horizontal_wrapped(|ui| {
+            for (command, icon, label) in [
+                ("layer.combineShapes.unite", "path-op-combine", "Unite Shapes"),
+                ("layer.combineShapes.subtractFrontShape", "path-op-subtract", "Subtract Front Shape"),
+                ("layer.combineShapes.intersectShapeAreas", "path-op-intersect", "Intersect Shape Areas"),
+                ("layer.combineShapes.excludeOverlappingShapes", "path-op-exclude", "Exclude Overlapping Shapes"),
+                ("layer.combineShapes.mergeShapeComponents", "path-op-merge", "Merge Shape Components"),
+            ] {
+                IconButton::command(craft::behavior::IconId::new(icon), CommandRef::new(command))
+                    .tooltip(craft::ui::contract::TooltipSpec::new(tl!(label).to_string()))
+                    .show(ui);
+            }
+        });
     });
 }
 

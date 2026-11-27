@@ -15,6 +15,9 @@ use crate::PhotocraftApp;
 
 pub(super) mod adjustments;
 
+#[cfg(test)]
+mod combine_shapes_tests;
+
 /// What the panel's body shows, from what is targeted.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Body {
@@ -96,6 +99,9 @@ fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
         _ => inspector.header(tl!("Document")).icon(IconSpec::svg(IconId::new("file"))),
     };
     inspector.show(ui, |ui, _| {
+        if selected > 1 && matches!(shown, Body::Document | Body::Layer) {
+            crate::layer_props_ui::combine_shapes(ui);
+        }
         let Some(layer) = layer else {
             if shown == Body::Document {
                 document_body(app, ui, selected);
