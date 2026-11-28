@@ -9,8 +9,8 @@ use egui_kittest::{
 const OPERATIONS: [(&str, &str); 5] = [
     ("layer.combineShapes.unite", "Unite Shapes"),
     ("layer.combineShapes.subtractFrontShape", "Subtract Front Shape"),
-    ("layer.combineShapes.intersectShapeAreas", "Intersect Shape Areas"),
-    ("layer.combineShapes.excludeOverlappingShapes", "Exclude Overlapping Shapes"),
+    ("layer.combineShapes.intersectShapeAreas", "Unite Shapes at Overlap"),
+    ("layer.combineShapes.excludeOverlappingShapes", "Subtract Shapes at Overlap"),
     ("layer.combineShapes.mergeShapeComponents", "Merge Shape Components"),
 ];
 

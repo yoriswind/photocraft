@@ -216,17 +216,18 @@ fn align_and_distribute(ui: &mut egui::Ui) {
 
 /// The Layer menu's operations for several selected layers, with the same command state and dispatch.
 /// Activations go through the frame's command queue; merging shapes never removes a layer during this panel pass.
-pub(super) fn combine_shapes(ui: &mut egui::Ui) {
+pub(super) fn combine_shapes(app: &PhotocraftApp, ui: &mut egui::Ui) {
     Section::new(tl!("Combine Shapes")).show(ui, |ui, _| {
         ui.horizontal_wrapped(|ui| {
             for (command, icon, label) in [
                 ("layer.combineShapes.unite", "path-op-combine", "Unite Shapes"),
                 ("layer.combineShapes.subtractFrontShape", "path-op-subtract", "Subtract Front Shape"),
-                ("layer.combineShapes.intersectShapeAreas", "path-op-intersect", "Intersect Shape Areas"),
-                ("layer.combineShapes.excludeOverlappingShapes", "path-op-exclude", "Exclude Overlapping Shapes"),
+                ("layer.combineShapes.intersectShapeAreas", "path-op-intersect", "Unite Shapes at Overlap"),
+                ("layer.combineShapes.excludeOverlappingShapes", "path-op-exclude", "Subtract Shapes at Overlap"),
                 ("layer.combineShapes.mergeShapeComponents", "path-op-merge", "Merge Shape Components"),
             ] {
                 IconButton::command(craft::behavior::IconId::new(icon), CommandRef::new(command))
+                    .enabled(crate::menus::is_enabled(app, command))
                     .tooltip(craft::ui::contract::TooltipSpec::new(tl!(label).to_string()))
                     .show(ui);
             }
