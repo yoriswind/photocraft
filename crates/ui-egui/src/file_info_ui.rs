@@ -65,7 +65,8 @@ impl DisplayOrder<String> for Categories {
 
 impl ItemSource<String> for Categories {}
 
-fn basic_rows() -> Vec<Param> {
+/// The Basic page schema, shared with its title/label contract tests.
+pub(crate) fn basic_rows() -> Vec<Param> {
     vec![
         Param::new("title", tl!("Document Title"), ParamKind::text("")),
         Param::new("author", tl!("Author"), ParamKind::text("")),
@@ -150,6 +151,7 @@ fn command_params(fields: &DialogFields) -> Value {
 /// Opens on the last page shown, keeping Basic's values from this document, not a previous form.
 pub(crate) fn open(app: &mut PhotocraftApp) -> Result<DialogId, String> {
     let document = app.active_doc_id()?;
+    let title = Label::from(crate::dialogs::file_info_title(app));
     let info = app.session.execute(COMMAND, json!({})).map_err(|error| error.to_string())?;
     let selected = saved_value::<String>(app.ctx(), &LAST_CATEGORY);
     let category = CATEGORIES.iter().find(|category| category.key == selected).map_or("basic", |category| category.key);
@@ -157,6 +159,7 @@ pub(crate) fn open(app: &mut PhotocraftApp) -> Result<DialogId, String> {
     let (camera_params, camera_fields) = camera_rows(&info["camera"]);
     Ok(app.framework.dialogs.open(FileInfoDialog {
         document,
+        title,
         opening: fields.clone(),
         fields,
         camera: info["camera"].clone(),
@@ -170,6 +173,7 @@ pub(crate) fn open(app: &mut PhotocraftApp) -> Result<DialogId, String> {
 
 struct FileInfoDialog {
     document: DocId,
+    title: Label,
     fields: DialogFields,
     opening: DialogFields,
     camera: Value,
@@ -228,7 +232,7 @@ impl StackDialog for FileInfoDialog {
         let waiting = self.held.is_waiting();
         let error = self.held.refusal().map(|(error, _)| error.clone());
         let rows = basic_rows();
-        let shown = FormDialog::new(tl!("File Info"), Bind::bound(&mut self.fields))
+        let shown = FormDialog::new(self.title.clone(), Bind::bound(&mut self.fields))
             .opening(self.opening.clone())
             .history(true)
             .collection_body(true)

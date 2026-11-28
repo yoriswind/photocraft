@@ -172,6 +172,7 @@ fn camera_value(h: &H, label: &str) -> String {
 fn file_info_lists_twelve_categories_in_order_with_only_measured_tooltips() {
     let mut h = harness(vec2(1200.0, 900.0), false);
     open(&mut h);
+    h.get_by_role_and_label(Role::Dialog, "first");
     assert_eq!(dialog(&mut h)["fields"]["category"], "basic");
     let mut rows: Vec<_> = h
         .query_all_by_role(Role::ListItem)
@@ -370,6 +371,8 @@ fn command_control_held_ok_keeps_captured_document_and_retries_after_both_author
     assert_eq!(dialog(&mut h)["fields"]["copyrightStatus"], "copyrighted");
     h.state_mut().run("file.new", json!({"width": 32, "height": 24, "name":"second.psd"})).unwrap();
     let second = h.state().session.active().unwrap().doc.id;
+    h.run_steps(4);
+    h.get_by_role_and_label(Role::Dialog, "first");
     let before: Vec<_> = h.state().session.documents().iter().map(|state| (state.doc.clone(), state.revision, state.history.entries())).collect();
     h.state_mut().services.automation_command = Some(Box::new(|id, _| if id == "file.fileInfo" { Err("command denied".into()) } else { Ok(()) }));
     let denied = call(&mut h, "ui.dialog.confirm", json!({"dialog":"top"}));
