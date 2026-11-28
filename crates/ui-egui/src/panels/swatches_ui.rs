@@ -1,4 +1,4 @@
-//! Window â€º Swatches: the swatch library (`photocraft_engine::presets::swatches`) in the framework's
+//! Window › Swatches: the swatch library (`photocraft_engine::presets::swatches`) in the framework's
 //! `SwatchesPanel`: groups as folders, flat touching squares with name tooltips, a context menu (Rename, Delete,
 //! Move to) and the footer.
 //!
@@ -189,7 +189,7 @@ pub(crate) fn source(name: &str, bytes: &[u8]) -> Value {
     json!({"data": photocraft_engine::paint::tile::b64_encode(bytes)})
 }
 
-/// Import an `.aco`/`.act`/`.ase` file's bytes (File â€º Open, drag and drop, the panel menu).
+/// Import an `.aco`/`.act`/`.ase` file's bytes (File › Open, drag and drop, the panel menu).
 pub fn import_bytes(app: &mut PhotocraftApp, name: &str, bytes: &[u8], replace: bool) -> Result<Value, String> {
     let stem = std::path::Path::new(name).file_stem().map(|s| s.to_string_lossy().to_string()).filter(|s| !s.trim().is_empty());
     let mut p = source(name, bytes);
@@ -271,7 +271,7 @@ fn answer_file(app: &mut PhotocraftApp, request: PresetFileRequest) {
     }
 }
 
-/// The Swatches entries of the panel menu ("â€¦").
+/// The Swatches entries of the panel menu ("…").
 pub(crate) fn panel_rows(_app: &PhotocraftApp) -> Vec<PanelRow> {
     SwatchesMenu::rows()
 }
