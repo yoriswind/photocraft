@@ -593,11 +593,12 @@ pub fn base_diameter(b: &BrushSettings, s: &StepInput) -> f32 {
     b.size * f
 }
 
-/// Distance to the next step at `p`: the diameter there times the spacing.
+/// Distance to the next step at `p`: the pre-jitter short axis times the spacing.
 fn step_len_for(brush: &BrushSettings, p: &StrokePoint) -> f64 {
     let s = StepInput { point: *p, direction: 0.0, initial_direction: 0.0, step: 0 };
     let d = base_diameter(brush, &s).max(1.0);
-    f64::from(d * brush.spacing.max(0.01)).max(0.5)
+    let short_axis = d * brush.roundness.clamp(0.01, 1.0);
+    f64::from(short_axis * brush.spacing.max(0.01)).max(0.5)
 }
 
 /// Builds the primary dabs of a step (Shape Dynamics, Scattering, Transfer, Color, Texture depth).
