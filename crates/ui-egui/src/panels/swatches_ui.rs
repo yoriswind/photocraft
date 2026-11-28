@@ -1,11 +1,11 @@
-//! Window › Swatches: the swatch library (`photocraft_engine::presets::swatches`) in the framework's
+//! Window â€º Swatches: the swatch library (`photocraft_engine::presets::swatches`) in the framework's
 //! `SwatchesPanel`: groups as folders, flat touching squares with name tooltips, a context menu (Rename, Delete,
 //! Move to) and the footer.
 //!
 //! As in Photoshop, clicking a swatch sets the foreground colour (and recolours selected type or
 //! fills the selected shape layers with a shape, Pen or path selection tool);
 //! Alt- or Ctrl/Cmd-clicking sets the background colour. The panel menu adds New Swatch, New Group,
-//! Import/Replace (`.aco`, `.act`, `.ase`), Export (`.aco`) and Export for Exchange (`.ase`) and Reset. The panel
+//! Import/Replace (`.aco`, `.act`, `.ase`), Export (`.aco`), Export as ACT (`.act`), Export for Exchange (`.ase`) and Reset. The panel
 //! reports `SwatchEdit`s; [`apply_edit`] maps each to one `swatches.*` engine command.
 
 use photocraft_engine::color_cmds::ColorExt;
@@ -189,7 +189,7 @@ pub(crate) fn source(name: &str, bytes: &[u8]) -> Value {
     json!({"data": photocraft_engine::paint::tile::b64_encode(bytes)})
 }
 
-/// Import an `.aco`/`.act`/`.ase` file's bytes (File › Open, drag and drop, the panel menu).
+/// Import an `.aco`/`.act`/`.ase` file's bytes (File â€º Open, drag and drop, the panel menu).
 pub fn import_bytes(app: &mut PhotocraftApp, name: &str, bytes: &[u8], replace: bool) -> Result<Value, String> {
     let stem = std::path::Path::new(name).file_stem().map(|s| s.to_string_lossy().to_string()).filter(|s| !s.trim().is_empty());
     let mut p = source(name, bytes);
@@ -271,12 +271,12 @@ fn answer_file(app: &mut PhotocraftApp, request: PresetFileRequest) {
     }
 }
 
-/// The Swatches entries of the panel menu ("…").
+/// The Swatches entries of the panel menu ("â€¦").
 pub(crate) fn panel_rows(_app: &PhotocraftApp) -> Vec<PanelRow> {
     SwatchesMenu::rows()
 }
 
-/// The state of each Swatches command: both exports wait for a swatch.
+/// The state of each Swatches command: all three exports wait for a swatch.
 pub(crate) fn command_states(app: &PhotocraftApp) -> Vec<(CommandRef, CommandState)> {
     SwatchesMenu::states(&app.session.presets().swatches).into_iter().map(|(command, state)| (CommandRef::from(command), state)).collect()
 }
@@ -640,5 +640,75 @@ mod tests {
             assert!(std::sync::Arc::ptr_eq(&app.session.active().unwrap().doc, &document));
             assert_eq!(app.session.active().unwrap().history.entries(), history);
         }
+    }
+
+    /// The shared ACT menu entry must reach the app's real deferred save and filename-based import.
+    #[test]
+    fn act_menu_saves_a_color_table_and_imports_header_like_rgb_bytes() {
+        use craft::color_ui::palette::SwatchEntry;
+        let (mut app, written) = export_fixture(vec![craft::host::Picked::Paths(vec!["Roundtrip.act".into()])], false, false);
+        app.session.presets_mut().swatches[0].entries[0] = SwatchEntry::new("Red", SwatchColor::Rgb([0.0, 1.0 / 255.0, 5.0 / 255.0]));
+        let library = app.session.presets().swatches.clone();
+        let document = app.session.active().unwrap().doc.clone();
+        let history = app.session.active().unwrap().history.entries();
+        let panel = app.ui.swatches.clone();
+        let ctx = app.ctx().clone();
+        assert!(run_fired(&mut app, &ctx, &CommandRef::from(SwatchesCommand::ExportAct)));
+        assert!(written.lock().unwrap().is_empty(), "the deferred save has not completed");
+        assert_eq!(app.ui.status, "Previous status");
+        app.poll_file_dialog();
+        let saved = written.lock().unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].0, "Roundtrip.act");
+        assert_eq!(&saved[0].1[..3], &[0, 1, 5], "RGB bytes can resemble an ACO header");
+        let mut imported = self::app();
+        let result = import_bytes(&mut imported, "Roundtrip.ACT", &saved[0].1, true).unwrap();
+        assert_eq!((result["format"].as_str(), result["count"].as_u64()), (Some("act"), Some(2)));
+        let colors: Vec<_> = imported.session.presets().swatches.iter().flat_map(|group| &group.entries).filter_map(|entry| entry.color().cloned()).collect();
+        assert_eq!(colors, [SwatchColor::Rgb([0.0, 1.0 / 255.0, 5.0 / 255.0]), SwatchColor::Rgb([0.0, 128.0 / 255.0, 128.0 / 255.0])]);
+        assert_eq!(app.ui.status, crate::i18n::fmt(tl!("Exported to {file}"), &[("file", "Roundtrip.act")]));
+        assert!(!app.ui.status_error);
+        assert_eq!(app.ui.swatches, panel);
+        assert_eq!(app.session.presets().swatches, library);
+        assert!(std::sync::Arc::ptr_eq(&app.session.active().unwrap().doc, &document));
+        assert_eq!(app.session.active().unwrap().history.entries(), history);
+    }
+
+    /// ACT's finite table is saved with every loss note, without replacing newer panel state.
+    #[test]
+    fn act_menu_reports_the_color_limit_after_saving_without_changing_the_library() {
+        use craft::color_ui::palette::{SwatchEntry, SwatchFormat, SwatchNote, write_swatches};
+        let (mut app, written) = export_fixture(vec![craft::host::Picked::Paths(vec!["Limited.act".into()])], false, true);
+        app.session.presets_mut().swatches[1].entries.extend((0u8..=254).map(|n| SwatchEntry::new(format!("Extra {n}"), SwatchColor::Rgb([f32::from(n) / 255.0, 0.0, 0.0]))));
+        let library = app.session.presets().swatches.clone();
+        let document = app.session.active().unwrap().doc.clone();
+        let history = app.session.active().unwrap().history.entries();
+        let (_, report) = write_swatches(&library, SwatchFormat::Act).unwrap();
+        assert!(report.notes.contains(&SwatchNote::Truncated(1)) && report.notes.contains(&SwatchNote::GroupsFlattened) && report.notes.contains(&SwatchNote::KindsDropped(1)));
+        let env = craft::ui::runtime::env::Env::of_root(app.ctx());
+        let (swatch_words, _) = words(app.ctx());
+        let lines = SwatchesPanel::note_lines(&report, true, &swatch_words, env.format());
+        let ctx = app.ctx().clone();
+        assert!(run_fired(&mut app, &ctx, &CommandRef::from(SwatchesCommand::ExportAct)));
+        assert!(written.lock().unwrap().is_empty());
+        assert_eq!(app.ui.status, "Previous status", "ACT loss notes wait for the write");
+        app.ui.swatches.selection = Selection::single(SwatchKey::Group("Second".into()));
+        app.ui.swatches.rename = Some(SwatchKey::Swatch("Teal".into()));
+        let newer_panel = app.ui.swatches.clone();
+        app.poll_file_dialog();
+        let saved = written.lock().unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].0, "Limited.act");
+        let mut imported = self::app();
+        let result = import_bytes(&mut imported, "Limited.act", &saved[0].1, true).unwrap();
+        assert_eq!((result["format"].as_str(), result["count"].as_u64()), (Some("act"), Some(256)));
+        for line in lines {
+            assert!(app.ui.status.contains(&line), "the saved ACT status lost note {line:?}: {}", app.ui.status);
+        }
+        assert!(!app.ui.status_error);
+        assert_eq!(app.ui.swatches, newer_panel);
+        assert_eq!(app.session.presets().swatches, library, "the 257-color library is not truncated by export");
+        assert!(std::sync::Arc::ptr_eq(&app.session.active().unwrap().doc, &document));
+        assert_eq!(app.session.active().unwrap().history.entries(), history);
     }
 }
