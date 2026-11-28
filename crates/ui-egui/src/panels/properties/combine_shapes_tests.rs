@@ -48,7 +48,7 @@ fn properties_combine_buttons_match_menu_and_whole_document_undo_redo() {
         let history = state.history.past_len();
         let mut reference = photocraft_engine::Session::new();
         reference.add_document((*before).clone(), None);
-        reference.restore_layer_selection(state.active_layer, &state.selected_layers(), state.layer_anchor).unwrap();
+        reference.restore_layer_selection(state.active_layer, state.selected_layers(), state.layer_anchor).unwrap();
         let mut reference = PhotocraftApp::new(reference, crate::Services::default());
         let mut h = harness(app, 1200.0, 1.0);
         assert!(std::sync::Arc::ptr_eq(&before, &h.state().session.active().unwrap().doc), "drawing must not edit");
@@ -91,7 +91,7 @@ fn properties_combine_is_hidden_without_multiple_selected_layers() {
 fn properties_combine_mixed_selection_matches_menu_availability() {
     for active_shape in [false, true] {
         let mut app = fixture();
-        let mut selected = app.session.active().unwrap().selected_layers();
+        let mut selected = app.session.active().unwrap().selected_layers().to_vec();
         let shape = app.session.active().unwrap().active_layer.unwrap();
         app.run("layer.new.layer", json!({})).unwrap();
         let raster = app.session.active().unwrap().active_layer.unwrap();
@@ -134,7 +134,7 @@ fn properties_combine_keeps_unsupported_background_and_mask_contexts_safe() {
         let mut app = fixture();
         if vector {
             // A shape already uses its path as a vector mask, so target a separate raster mask.
-            let mut selected = app.session.active().unwrap().selected_layers();
+            let mut selected = app.session.active().unwrap().selected_layers().to_vec();
             app.run("layer.new.layer", json!({"name": "Mask target"})).unwrap();
             let active = app.session.active().unwrap().active_layer;
             selected.push(active.unwrap());
