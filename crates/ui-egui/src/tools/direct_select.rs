@@ -370,7 +370,10 @@ pub(crate) fn edit_paths(app: &PhotocraftApp, bezier: BezierTool) -> (Vec<EditPa
         let edit = match (r, drafted(app)) {
             (PathRef::Pen, Some(pen)) => EditPath::new(r.key(), vec![pen.draft.clone()]).copies(false),
             _ => crate::vector_ui::edit_path(&path, r.key()),
-        };
+        }
+        // Eligibility belongs to the app, while the shared widget chooses and holds the exact
+        // command-only press target. Keep this policy independent of later modifier frames.
+        .command_selects_subpath(app.ui.tool == Tool::DirectSelection && bezier == BezierTool::Direct);
         paths.push(edit);
         refs.push(r);
     }
@@ -504,6 +507,12 @@ mod tests;
 
 #[cfg(test)]
 mod nudge_history_tests;
+
+#[cfg(test)]
+mod ctrl_path_selection_tests;
+
+#[cfg(test)]
+mod constrain_segment_tests;
 
 #[cfg(test)]
 mod convert_point_history_tests;

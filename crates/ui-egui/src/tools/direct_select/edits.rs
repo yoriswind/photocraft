@@ -74,11 +74,26 @@ pub(crate) fn apply(app: &mut PhotocraftApp, output: &BezierOutput, refs: &[Path
         // refused commit keeps the draft and says why.
         crate::vector_ui::pen_commit(app, false);
     }
+    #[cfg(test)]
+    app.ctx().data_mut(|data| data.insert_temp(test_preview_id(), output.edit.value().cloned()));
+}
+
+#[cfg(test)]
+fn test_preview_id() -> egui::Id {
+    egui::Id::unique("photocraft.test.directSelection.shownPaths")
+}
+
+/// The actual last shown overlay value, only for the original pre-commit geometry oracle.
+#[cfg(test)]
+pub(super) fn test_preview(app: &PhotocraftApp) -> Option<Vec<EditPath>> {
+    app.ctx().data_mut(|data| data.get_temp::<Option<Vec<EditPath>>>(test_preview_id())).flatten()
 }
 
 /// A pass that shows no editing overlay: a gesture it began has nobody to end it.
 pub(crate) fn not_shown(app: &mut PhotocraftApp) {
     app.ui.direct_selection.editing = None;
+    #[cfg(test)]
+    app.ctx().data_mut(|data| data.remove::<Option<Vec<EditPath>>>(test_preview_id()));
 }
 
 /// Deletes anchors `[subpath, knot]` of `path`, highest index first so the lower ones stay valid.
@@ -226,6 +241,13 @@ fn change_path(app: &mut PhotocraftApp, change: &PathEdit, refs: &[PathRef], too
             }
             command_ask(app, r, tool, "path.moveAnchors", params);
         }
+        // The explicit shared receipt owns this identity even when Command/Ctrl was released
+        // during the drag. One whole-subpath command gives one Drag Paths history step.
+        PathEdit::MoveSubpath { subpath, by, .. } if moved(by.x, by.y) => {
+            let Some(knots) = super::path_of(app, &r).and_then(|path| path.subpaths.get(*subpath).map(|sub| sub.knots.len())) else { return };
+            let anchors: Vec<[usize; 2]> = (0..knots).map(|knot| [*subpath, knot]).collect();
+            command_ask(app, r, tool, "path.moveAnchors", json!({"anchors": anchors, "move": [by.x, by.y], "stepName": "Drag Paths"}));
+        }
         // Direct Selection's ⌥ drag on a segment: a copy of the subpath moves, the source stays (#13211).
         PathEdit::DuplicateSubpath { subpath, by, .. } if moved(by.x, by.y) => {
             let knots = super::path_of(app, &r).and_then(|path| path.subpaths.get(*subpath).map(|sub| sub.knots.len())).unwrap_or(0);
@@ -242,8 +264,8 @@ fn change_path(app: &mut PhotocraftApp, change: &PathEdit, refs: &[PathRef], too
             }
             command_ask(app, r, tool, "path.moveHandle", params);
         }
-        PathEdit::BendSegment { segment, t, by, .. } if moved(by.x, by.y) => {
-            command_ask(app, r, tool, "path.bendSegment", json!({"subpath": segment.subpath, "knot": segment.knot, "t": t, "move": [by.x, by.y]}));
+        PathEdit::BendSegment { segment, t, by, constrain, .. } if moved(by.x, by.y) => {
+            command_ask(app, r, tool, "path.bendSegment", json!({"subpath": segment.subpath, "knot": segment.knot, "t": t, "move": [by.x, by.y], "constrain": constrain}));
         }
         PathEdit::Convert { knot, out, .. } => {
             let mut params = json!({"subpath": knot.subpath, "knot": knot.knot});
@@ -264,7 +286,7 @@ fn change_path(app: &mut PhotocraftApp, change: &PathEdit, refs: &[PathRef], too
         // A hit right at a segment's end is an anchor (anchors win the hit test), so `t` is inside.
         PathEdit::InsertAnchor { segment, t, by, .. } => add_and_move(app, r, "add-anchor", *segment, *t, [by.x, by.y], false),
         // Add Anchor Point's drag: the new smooth anchor with its handles pulled out, as the Pen does (#12707).
-        PathEdit::PullAnchor { segment, t, out, in_ctrl, .. } => add_and_pull(app, r, *segment, *t, *out, *in_ctrl),
+        PathEdit::PullAnchor { segment, t, by, out, in_ctrl, .. } => add_and_pull(app, r, *segment, *t, *by, *out, *in_ctrl),
         _ => {}
     }
 }
@@ -276,12 +298,23 @@ fn add_and_pull(
     r: PathRef,
     segment: KnotRef,
     t: f64,
+    by: craft::behavior::kurbo::Vec2,
     out: craft::behavior::kurbo::Point,
     in_ctrl: Option<craft::behavior::kurbo::Point>,
 ) {
+    if !by.x.is_finite() || !by.y.is_finite() {
+        return;
+    }
     let key = format!("add-anchor-{}", app.ui.alloc_id());
     let add = json!({"subpath": segment.subpath, "knot": segment.knot, "t": t, "coalesce": key});
     if command(app, r, "path.addAnchor", add).is_none() {
+        return;
+    }
+    // The landed shared Space drag reports absolute handles and a separate anchor translation.
+    // Apply that translation before the handles, within the existing Add Anchor history group.
+    if moved(by.x, by.y)
+        && command(app, r, "path.moveAnchors", json!({"anchors": [[segment.subpath, segment.knot + 1]], "move": [by.x, by.y], "coalesce": key})).is_none()
+    {
         return;
     }
     let at = json!({"subpath": segment.subpath, "knot": segment.knot + 1});
@@ -467,3 +500,36 @@ pub(crate) mod delete_anchor_targeted_path_tests;
 #[cfg(test)]
 #[path = "../anchor_tools/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod shared_sdk_receipt_tests {
+    use super::*;
+    use craft::behavior::kurbo::{Point, Vec2};
+    use crate::direct_select::convert_point_history_tests::added;
+
+    #[test]
+    fn translated_pull_receipt_keeps_the_anchor_move_and_one_add_anchor_history_step() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 800, "height": 600, "background": "white"})).unwrap();
+        app.run("path.set", json!({"name": "Path 1", "path": {"subpaths": [{"closed": true,
+            "knots": [[100,300], [300,300], [300,500], [100,500]]}]}})).unwrap();
+        app.ui.selected_path = Some("Path 1".into());
+        app.ui.tool = Tool::AddAnchorPoint;
+        app.sync_views();
+        let target = PathRef::Saved(0);
+        let before = crate::direct_select::path_of(&app, &target).unwrap().into_owned();
+        let mut shown = crate::vector_ui::edit_path(&before, target.key());
+        let receipt = PathEdit::pull_anchor_moved(shown.key, KnotRef::new(0, 1), 0.5,
+            Vec2::new(0.0, 40.0), Point::new(352.0, 440.0), None);
+        assert!(receipt.apply(&mut shown));
+        let names = added(&mut app, |app| change_path(app, &receipt, &[target], Tool::AddAnchorPoint, Mods::default(), true));
+        let after = crate::direct_select::path_of(&app, &target).unwrap().into_owned();
+        assert_eq!(crate::vector_ui::edit_path(&after, target.key()).subpaths, shown.subpaths,
+            "absolute handles must be applied around the translated anchor, as in the shared preview");
+        assert_eq!(names, ["Add Anchor Point"]);
+        app.run("edit.undo", json!({})).unwrap();
+        assert_eq!(crate::direct_select::path_of(&app, &target).unwrap().as_ref(), &before);
+        app.run("edit.redo", json!({})).unwrap();
+        assert_eq!(crate::direct_select::path_of(&app, &target).unwrap().as_ref(), &after);
+    }
+}

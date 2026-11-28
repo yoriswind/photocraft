@@ -199,6 +199,9 @@ pub struct ToolOptions {
     /// on one of its anchors deletes it (#4144).
     #[serde(default = "yes")]
     pub pen_auto_add_delete: bool,
+    /// Direct Selection keeps a dragged curved segment's two handle directions (#13214).
+    #[serde(default)]
+    pub constrain_path_dragging: bool,
     /// Pen › gear › Path Options: the rubber band (off by default, as in Photoshop, #12900), the
     /// path colour and the line thickness.
     #[serde(default)]
@@ -546,6 +549,7 @@ impl Default for ToolOptions {
             rect_from_center: false,
             curve_fit: default_curve_fit(),
             pen_auto_add_delete: true,
+            constrain_path_dragging: false,
             path_options: PathOptionsSettings::default(),
             marquee_style: default_marquee_style(),
             marquee_width: 1.0,

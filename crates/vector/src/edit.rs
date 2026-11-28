@@ -234,6 +234,61 @@ pub fn bend_segment(path: &mut Path, knot: [usize; 2], t: f64, d: [f64; 2]) -> R
     Ok(())
 }
 
+/// Drags a curved segment while keeping its two handles on their original rays. Anchors,
+/// opposite handles and smooth flags stay untouched. Independent handle directions can place
+/// the point at `t` under the pointer exactly. Parallel directions cannot do that; each handle
+/// instead takes the length it would have after the pointer's translation, along its old ray.
+/// Straight segments, retracted handles and near-anchor drags keep [`bend_segment`]'s behavior.
+pub fn bend_segment_constrained(path: &mut Path, knot: [usize; 2], t: f64, d: [f64; 2]) -> Result<(), String> {
+    let end = segment_end(path, knot)?;
+    let a = *knot_mut(path, knot)?;
+    let b = *knot_mut(path, end)?;
+    let finite = |path: &Path| {
+        path.subpaths.iter().flat_map(|sub| &sub.knots).all(|knot| {
+            [knot.anchor, knot.in_ctrl, knot.out_ctrl].iter().all(|point| point.x.is_finite() && point.y.is_finite())
+        })
+    };
+    if !d[0].is_finite() || !d[1].is_finite() || !finite(path) {
+        return Ok(());
+    }
+    let (la, lb) = (dist(a.out_ctrl, a.anchor), dist(b.in_ctrl, b.anchor));
+    if la < 1e-9 || lb < 1e-9 || !(0.05..=0.95).contains(&t) {
+        // The qualified shared receipt keeps the ordinary fallback, but never leaves an overflowed path.
+        let before = path.clone();
+        let result = bend_segment(path, knot, t, d);
+        if !finite(path) {
+            *path = before;
+        }
+        return result;
+    }
+    if d == [0.0, 0.0] {
+        return Ok(());
+    }
+    let va = [(a.out_ctrl.x - a.anchor.x) / la, (a.out_ctrl.y - a.anchor.y) / la];
+    let vb = [(b.in_ctrl.x - b.anchor.x) / lb, (b.in_ctrl.y - b.anchor.y) / lb];
+    let det = va[0] * vb[1] - va[1] * vb[0];
+    let (na, nb) = if det.abs() < 1e-9 {
+        (dist(add(a.out_ctrl, d), a.anchor), dist(add(b.in_ctrl, d), b.anchor))
+    } else {
+        let u = 1.0 - t;
+        let da = (d[0] * vb[1] - d[1] * vb[0]) / (det * 3.0 * u * u * t);
+        let db = (va[0] * d[1] - va[1] * d[0]) / (det * 3.0 * u * t * t);
+        let (na, nb) = (la + da, lb + db);
+        if !da.is_finite() || !db.is_finite() || !na.is_finite() || !nb.is_finite() {
+            return Ok(());
+        }
+        (na.max(0.0), nb.max(0.0))
+    };
+    let out = add(a.anchor, [va[0] * na, va[1] * na]);
+    let into = add(b.anchor, [vb[0] * nb, vb[1] * nb]);
+    if !na.is_finite() || !nb.is_finite() || ![out.x, out.y, into.x, into.y].iter().all(|v| v.is_finite()) {
+        return Ok(());
+    }
+    knot_mut(path, knot)?.out_ctrl = out;
+    knot_mut(path, end)?.in_ctrl = into;
+    Ok(())
+}
+
 fn lerp(a: Point, b: Point, t: f64) -> Point {
     Point::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
 }
@@ -985,3 +1040,7 @@ mod edit_delete_last_anchor_tests;
 #[cfg(test)]
 #[path = "edit_add_anchor_straight_tests.rs"]
 mod edit_add_anchor_straight_tests;
+
+#[cfg(test)]
+#[path = "edit_constrain_segment_tests.rs"]
+mod edit_constrain_segment_tests;
