@@ -283,6 +283,9 @@ pub struct ToolOptions {
     /// leaves it, as in Photoshop.
     #[serde(default = "yes")]
     pub zoom_in: bool,
+    /// Zoom tool > Zoom All Windows: a selected Zoom click steps the other shown docked views.
+    #[serde(default)]
+    pub zoom_all_windows: bool,
     /// Hand tool › Scroll All Windows: a Hand drag pans every shown document view, not only the
     /// one dragged in (`scroll_all_windows.rs`). Shift held while dragging does the same.
     #[serde(default)]
@@ -577,6 +580,7 @@ impl Default for ToolOptions {
             cr_anti_alias: true,
             zoom_scrubby: true,
             zoom_in: true,
+            zoom_all_windows: false,
             hand_scroll_all: false,
             pencil_auto_erase: false,
             brush_clear: false,

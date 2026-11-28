@@ -231,7 +231,7 @@ pub fn option_keys(tool: Tool) -> &'static [&'static str] {
         Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => {
             reset!(type_font, type_style, type_size, type_aa, type_align, type_direction, type_style_defaults)
         }
-        Tool::Zoom => reset!(zoom_scrubby, zoom_in),
+        Tool::Zoom => reset!(zoom_scrubby, zoom_in, zoom_all_windows),
         Tool::Hand => reset!(hand_scroll_all),
         Tool::SpotHealing => reset!(spot_type),
         Tool::Healing => reset!(clone_aligned, clone_sample, healing_replace),

@@ -59,9 +59,14 @@ fn view_members(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             let target = crate::canvas::view_target(app, index);
             // Zoom Out is the bar's `out`; the tool keeps the direction as `zoom_in`.
             let mut out = !app.ui.tool_options.zoom_in;
-            let shown = NavigateBar::zoom(Bind::bound(&mut view), target, &mut options, Bind::bound(&mut out)).show(ui);
+            let mut all_windows = app.ui.tool_options.zoom_all_windows;
+            let shown =
+                NavigateBar::zoom(Bind::bound(&mut view), target, &mut options, Bind::bound(&mut out)).zoom_all_windows(Bind::bound(&mut all_windows)).show(ui);
             if app.ui.tool_options.zoom_in == out {
                 app.ui.tool_options.zoom_in = !out;
+            }
+            if app.ui.tool_options.zoom_all_windows != all_windows {
+                app.ui.tool_options.zoom_all_windows = all_windows;
             }
             crate::chrome_ui::zoom_alert(app, shown.invalid_zoom);
             write_view(app, index, &view, !shown.view.is_empty());
