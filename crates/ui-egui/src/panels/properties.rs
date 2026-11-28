@@ -170,6 +170,7 @@ fn adjustment_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, 
 
 #[cfg(test)]
 mod tests {
+    use egui::accesskit::Role;
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
     use photocraft_doc::LayerId;
@@ -204,7 +205,16 @@ mod tests {
         let st = h.state().session.active().unwrap();
         assert_eq!(st.active_layer, Some(LayerId(bg)));
         assert_eq!(st.selected_layers().len(), 2);
-        h.get_by_label("Align Horizontal Centers").click();
+        // Combine Shapes precedes Align in this scrolling pane. Give the click target
+        // visible room through the same workspace resize action as a user, rather than
+        // clicking a node whose unscrolled bounds can fall over the Layers pane.
+        let ctx = h.ctx.clone();
+        crate::menus::invoke(h.state_mut(), &ctx, "ui.dock", json!({"action": {"ResizeGroup": {"panel": "properties", "height": 300.0}}})).unwrap();
+        h.run_steps(4);
+        let pane = h.get_by_role_and_label(Role::TabPanel, "Properties").rect();
+        let align = h.get_by_role_and_label(Role::Button, "Align Horizontal Centers");
+        assert!(pane.contains_rect(align.rect()), "the actual Align button {:?} must be inside the visible Properties pane {pane:?}", align.rect());
+        align.click();
         h.run_steps(4);
         let st = h.state().session.active().unwrap();
         let b = st.doc.layer(LayerId(block)).unwrap().surface().unwrap().content_bounds();
